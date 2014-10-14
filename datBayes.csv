@@ -1,0 +1,101 @@
+,sid,eGlobal,gs_text,icd_name,causadef,codcau11,codcau21,codcau31,codcau41,codcau51,age,gender,education,cigsPerDay
+1,3,OTHERNON-COMMUNICABLEDISEASES,Other Non-communicable Diseases,digest_vascular,K550,I269,R688,K550,,E149,76,Female,No Schooling,0
+2,49,STROKE,Stroke,cvd_stroke_subhem,I609,R402,I678,I609,,I10,50,Male,High School,3
+3,94,STROKE,Stroke,cvd_stroke_cerhem,I619,I619,I10,,,K746,47,Male,Primary School,0
+4,103,STROKE,Stroke,_gc,I678,I678,,,,I10,98,Female,No Schooling,0
+5,120,DIABETES,Leukemia/Lymphomas,diabetes,E119,A419,J180,E119,,,79,Male,No Schooling,0
+6,125,AIDS,AIDS,hiv_other,B208,A419,A09,B24,B24,,37,Male,Primary School,0
+7,133,OTHERNON-COMMUNICABLEDISEASES,Other Non-communicable Diseases,cong_urogenital,Q600,E878,N19,N189,Q600,,28,Female,High School,0
+8,151,CIRRHOSIS,Cirrhosis,cirrhosis,K746,G936,I619,K729,K746,,36,Male,Primary School,0
+9,156,DIABETES,Diabetes,ckd_diabetes,E112,E878,N189,E119,,I10,47,Male,High School,0
+10,188,OTHERNON-COMMUNICABLEDISEASES,Other Non-communicable Diseases,neo_myeloma,C900,R578,D619,C900,,I10,55,Female,High School,0
+11,202,CIRRHOSIS,Renal Failure,digest_pancreatitis,K852,K859,F102,,,,22,Male,High School,5
+12,240,LUNGCANCER,Pneumonia,_gc,J180,J969,J90,J180,,,28,Male,Primary School,1
+13,262,OTHERNON-COMMUNICABLEDISEASES,Other Non-communicable Diseases,uri,J36,A419,J985,J36,E119,,62,Male,Primary School,0
+14,275,OTHERNON-COMMUNICABLEDISEASES,Other Non-communicable Diseases,tb,A199,A419,A199,M329,,,61,Female,No Schooling,0
+15,282,COPD,COPD,resp_copd,J440,J960,J180,J449,E119,,83,Female,No Schooling,0
+16,292,LEUKEMIA/LYMPHOMAS,Leukemia/Lymphomas,neo_hodgkins,C819,I519,D619,C819,,,53,Female,Primary School,0
+17,305,CIRRHOSIS,Cirrhosis,cirrhosis,K704,A419,K650,K729,F102,,34,Male,College or Higher,7
+18,401,STROKE,Stroke,cvd_stroke_cerhem,I619,J960,J180,I619,,,85,Female,Primary School,0
+19,412,DIABETES,Diabetes,diabetes,E119,G936,E870,E119,,,66,Male,Primary School,0
+20,428,COPD,Stroke,resp_copd,J440,J960,J180,J449,,I10,71,Female,Primary School,0
+21,432,LEUKEMIA/LYMPHOMAS,Leukemia/Lymphomas,neo_leukemia,C910,R571,D619,R99,C910,,69,Female,No Schooling,0
+22,446,OTHERNON-COMMUNICABLEDISEASES,Other Non-communicable Diseases,digest_vascular,K550,A419,K659,,K550,E119,61,Male,No Schooling,40
+23,451,TB,TB,_gc,J189,J960,A162,E119,,,68,Female,Primary School,0
+24,487,AIDS,AIDS,hiv_other,B208,E878,K529,B24,,,51,Male,College or Higher,3
+25,555,CIRRHOSIS,Cirrhosis,cirrhosis,K729,R571,K922 ,I850,K729,,56,Female,Primary School,0
+26,561,OTHERNON-COMMUNICABLEDISEASES,Other Non-communicable Diseases,cirrhosis,K729,K729,K729,Q445,,,39,Female,High School,0
+27,567,COPD,Other Non-communicable Diseases,endo_obesity,E668,J969,I279,E668,,,35,Female,High School,1
+28,579,DIABETES,Diabetes,diabetes,E119,J960,J981,J180,E119,,73,Female,Primary School,0
+29,594,STOMACHCANCER,Stomach Cancer,neo_stomach_cancer,C169,E878,C169,,,,91,Female,No Schooling,0
+30,690,BREASTCANCER,Breast Cancer,neo_breast_cancer,C509,E878,K859,R99,C509,,40,Female,High School,0
+31,714,AIDS,AIDS,hiv_other,B208,J960,J189,B24,,,32,Male,College or Higher,0
+32,748,OTHERCARDIOVASCULARDISEASES,Other Cardiovascular Diseases,cvd_rhd,I099,R570,I099,I10,,,48,Female,High School,0
+33,843,AIDS,AIDS,hiv_other,B208,A419,A09,K922,,B24,44,Male,High School,0
+34,897,STOMACHCANCER,Stomach Cancer,neo_stomach_cancer,C169,J969,I269,C169,,,51,Male,High School,1
+35,929,STROKE,Stroke,cvd_stroke_cerhem,I619,G936,I619,I10,,,47,Male,Primary School,0
+36,952,CIRRHOSIS,Other Non-communicable Diseases,digest_pancreatitis,K859,R571,K922,K318,K859,E119,57,Male,College or Higher,0
+37,960,DIARRHEA/DYSENTERY,Diarrhea/Dysentery,diarrhea_other,A09,R571,E86,A09,,I10,86,Female,Unknown,0
+38,975,PRETERMDELIVERY,Birth asphyxia,neonatal_other,P523,P523,P073,,,,0,Male,Unknown,NA
+39,984,OTHERINFECTIOUSDISEASES,Other Infectious Diseases,skin_cellulitis,L031,A419,A419,L031,,K729,61,Female,Primary School,0
+40,999,CERVICALCANCER,Cervical Cancer,neo_cervical_cancer,C539,A419,K639,K631,C539,,52,Female,No Schooling,5
+41,1017,PRETERMDELIVERY,Preterm Delivery,neonatal_preterm,P220,P285,P220,P073,,Q897,0,Male,Unknown,NA
+42,1054,MATERNAL,Maternal,maternal_indirect,O996,J960,J81,N179,O759,K801,17,Female,High School,0
+43,1060,STROKE,Stroke,_gc,I679,G932,I679,,,E119,57,Male,Primary School,2
+44,1064,PNEUMONIA,Pneumonia,diabetes,E119,J960,J180,,,E119,70,Female,No Schooling,0
+45,1097,CIRRHOSIS,Falls,mental_alcohol,F102,K922,G936,F102,,,34,Male,High School,5
+46,1112,STROKE,Stroke,_gc,I678,I678,,,,,79,Male,Primary School,0
+47,1190,MATERNAL,Other Defined Causes of Child Deaths,_gc,D65,A419,N179,D65,,,2,Female,Unknown,NA
+48,1191,OTHERDEFINEDCAUSESOFCHILDDEATHS,Other Defined Causes of Child Deaths,neuro_epilepsy,G419,A419,I639,G936,G419,G409,1,Female,Unknown,NA
+49,1216,PRETERMDELIVERY,Preterm Delivery,neonatal_enceph,P219,P209,R688,P219,,P073,0,Male,Unknown,NA
+50,1226,CONGENITALMALFORMATION,Congenital malformation,cong_digestive,Q439,P369,P60,P369 ,K639,Q439,0,Male,Unknown,NA
+51,1251,CONGENITALMALFORMATION,Congenital malformation,cong_other,Q300,P269,P369,K229,Q300,,0,Male,Unknown,NA
+52,1297,AIDS,AIDS,hiv_other,B219,J960,D649,N498,B24,D377,28,Male,High School,2
+53,1340,STOMACHCANCER,Stomach Cancer,neo_stomach_cancer,C169,A419,K659,K929,C169,I10 ,70,Male,Primary School,0
+54,1345,STROKE,Stroke,cvd_stroke_subhem,I609,R578,I609,I10,I10,,41,Male,High School,20
+55,1350,OTHERNON-COMMUNICABLEDISEASES,Other Non-communicable Diseases,neo_mouth_cancer,C07,E878,C07,,,,76,Male,Primary School,0
+56,1380,LUNGCANCER,Lung Cancer,neo_lung_cancer,D381,J969,D381,,,,58,Male,High School,0
+57,1394,CIRRHOSIS,Diarrhea/Dysentery,digest_pud,K254,R571,K922,K259,,,75,Female,Primary School,0
+58,1398,STROKE,Stroke,_gc,I678,G936,I678,,,I10,68,Female,No Schooling,0
+59,1450,PNEUMONIA,Pneumonia,_gc,B199,A419,J180,B199,,G809,3,Female,Unknown,NA
+60,1481,PRETERMDELIVERY,Pneumonia,neonatal_preterm,P285,A419,A419,P285,,,0,Female,Unknown,NA
+61,1503,STROKE,Sepsis,_gc,I272,I619,I272,R578,G936,G419,0,Male,Unknown,NA
+62,1512,DIABETES,Other Infectious Diseases,diabetes,E129,A419,N10,E119,E43 ,D649,42,Male,No Schooling,20
+63,1547,PRETERMDELIVERY,Birth asphyxia,neonatal_preterm,P220,P269,P219,P220,,P072,0,Female,Unknown,NA
+64,1565,IHD–ACUTEMYOCARDIALINFARCTION,Other Cardiovascular Diseases,cvd_ihd,I219,R570,I219,I119,I10,J189,75,Female,Primary School,3
+65,1690,CIRRHOSIS,Cirrhosis,cirrhosis,K703,K729,K746,F102,,,29,Male,High School,1
+66,1717,STROKE,Stroke,cvd_stroke_cerhem,I619,I619,I10,,,E149,60,Male,Primary School,6
+67,1720,CIRRHOSIS,Cirrhosis,_gc,K922,R571,K922,,,F102,49,Male,High School,0
+68,1732,COPD,COPD,resp_copd,J440,J189,J449,,,,81,Female,Primary School,0
+69,1776,CIRRHOSIS,Cirrhosis,cirrhosis,K721,R571,K922,,K721 ,N179,62,Female,Primary School,0
+70,1810,RENALFAILURE,Renal Failure,ckd,N189,E878,E784,D649,N189,,43,Male,High School,0
+71,1819,OTHERCARDIOVASCULARDISEASES,IHD – Acute Myocardial Infarction,cvd_ihd,I258,R570,I509,I258,,,61,Male,Primary School,4
+72,1871,STROKE,Stroke,cvd_stroke_cerhem,I619,E872,G98,I609,I619,,63,Female,Primary School,0
+73,1882,COPD,Pneumonia,resp_copd,J441,J441,N179,G934,,,83,Male,No Schooling,0
+74,1931,IHD–ACUTEMYOCARDIALINFARCTION,IHD – Acute Myocardial Infarction,cvd_ihd,I219,I219,,,,I10,66,Male,Primary School,0
+75,1935,NA,Stillbirth,_sb,p95,,,,,,0,Male,Unknown,NA
+76,2007,OTHERDEFINEDCAUSESOFCHILDDEATHS,Pneumonia,_gc,J189,E872,A419 ,J984,J189,,90,Female,No Schooling,6
+77,2042,BREASTCANCER,Breast Cancer,neo_breast_cancer,C509,J90,C795,C509,,,43,Female,College or Higher,0
+78,2048,STOMACHCANCER,Stomach Cancer,neo_stomach_cancer,C169,J969,C780,C169,,,48,Female,High School,20
+79,2092,PRETERMDELIVERY,Preterm Delivery,neonatal_enceph,P209,P269,P209,P072,,,0,Male,Unknown,NA
+80,2241,ROADTRAFFIC,Road Traffic,_gc,V878,J189 ,S099,,,,24,Male,College or Higher,20
+81,2248,HOMICIDE,Homicide,_gc,Y240,S099 ,T141,S018,,,62,Male,Unknown,5
+82,2287,AIDS,AIDS,hiv,B24,J969,J189,B24,,,59,Male,Primary School,0
+83,2306,ROADTRAFFIC,Road Traffic,_gc,V892,S069,S021 ,S299,,,54,Male,Primary School,0
+84,2387,OTHERCARDIOVASCULARDISEASES,Other Cardiovascular Diseases,cvd_ihd,I210,I499,I210,I251,I10 ,I091,66,Male,High School,0
+85,2418,IHD–ACUTEMYOCARDIALINFARCTION,IHD – Acute Myocardial Infarction,cvd_ihd,I219,R570,J180,I219,I259,,75,Male,Primary School,0
+86,2424,PRETERMDELIVERY,Preterm Delivery,neonatal_sepsis,P369,P269,P239,P369,P369,P220,0,Male,Unknown,NA
+87,2453,BIRTHASPHYXIA,Birth asphyxia,neonatal_enceph,P240,P209,P210,P916,P240,,0,Female,Unknown,NA
+88,2464,PRETERMDELIVERY,Preterm Delivery,neonatal_preterm,P220,P285,P280,P220,P072,,0,Male,Unknown,NA
+89,2529,OTHERCARDIOVASCULARDISEASES,Other Cardiovascular Diseases,cong_heart,Q249,R570,Q249,,,,1,Female,Unknown,NA
+90,2580,OTHERDEFINEDCAUSESOFCHILDDEATHS,Other Cardiovascular Diseases,_gc,I10,I499,R000 ,R001,I10,,84,Female,No Schooling,0
+91,2625,MATERNAL,Maternal,maternal_hem,O441,R571,O829,N859,O720,,20,Female,High School,0
+92,2638,MATERNAL,Maternal,maternal_hem,O720,R571,O679,O720,,,36,Female,Primary School,0
+93,2644,MATERNAL,Maternal,maternal_indirect,O996,A419,A419 ,N19,K922,O909,39,Female,College or Higher,0
+94,2645,MATERNAL,Maternal,maternal_indirect,O998,A419,B378,C910,I619 ,O269,18,Female,High School,0
+95,2700,IHD–ACUTEMYOCARDIALINFARCTION,IHD – Acute Myocardial Infarction,cvd_ihd,I219,R570,I219,I251,,I10,75,Female,No Schooling,0
+96,2704,IHD–ACUTEMYOCARDIALINFARCTION,IHD – Acute Myocardial Infarction,cvd_ihd,I219,I219 ,I219,,,,71,Female,No Schooling,0
+97,2718,PRETERMDELIVERY,Birth asphyxia,neonatal_sepsis,P369,P210,P239 ,P369,R688,Q249 ,0,Female,Unknown,NA
+98,2761,TB,TB,tb,A162,A162,J189,,,I678,84,Female,No Schooling,0
+99,2786,AIDS,AIDS,hiv_other,B208,A419,J189,,,B24,45,Male,College or Higher,0
+100,2839,LEUKEMIA/LYMPHOMAS,Leukemia/Lymphomas,neo_lymphoma,C859,A419,C859,,,,59,Male,Primary School,0
