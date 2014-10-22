@@ -109,6 +109,9 @@ dat$age         <- as.numeric(dat$g1_07a)
 inx             <- is.na(dat$age)
 dat[inx,'age']  <- as.numeric(dat[inx,'g1_06y']) - as.numeric(dat[inx,'g1_01y'])
 plot(sort(dat$age)); grid()
+dat$ageGroup   <- cut(dat$age, breaks=c(-2,2,16,50,200), labels=c('Infant', 'Child', 'Adult', 'Senior'))  
+plot(table(dat$ageGroup))
+
 
 dat$gender      <- dat$g1_05
 dat[nchar(dat$gender)==0,'gender']  <- 'Unknown'
@@ -124,7 +127,13 @@ dat[sample(nrow(dat),20),c('a4_01', 'a4_02_1', 'a4_02_2', 'a4_02_3', 'a4_03', 'a
 plot(sort(dat$a4_04)); grid()
 dat$cigsPerDay  <- dat$a4_04
 plot(sort(dat$cigsPerDay)); grid()
+dat$smokingGroup   <- cut(dat$cigsPerDay, breaks=c(-1,0,10,1000), labels=c('None', 'Light', 'Heavy'))
+dat[which(dat$age < 10), 'smokingGroup'] = 'None'
+table(dat$smokingGroup, useNA='always')
 
+# Rename it to find it easier
+dat$alcohol <- dat$a4_06
+table(dat$alcohol, useNA='always')
 
 # KEEP ONLY A SUBSET OF THE GIANT BLOCK OF DATA
 # Reduce the columns to some manageable set.  At the top of this file I read in a tab delimited file
@@ -132,7 +141,7 @@ plot(sort(dat$cigsPerDay)); grid()
 # called 'discard'.  Zero means generally keep it.  1 is extra info.  2 is probably never needed by me.
 # Now down to 1587 obs. of  67 variables when the following is executed.
 str(datColDesc)
-keepCols   <- c("sid", "age", "gender", "education", "cigsPerDay", 
+keepCols   <- c("sid", "age", "ageGroup", "gender", "education", "cigsPerDay", 'smokingGroup', 'alcohol',
 				"source", "module.x", "gs_text", "va_code", "gs_code", "gs_assigned", 
 				"gs_level.x", "ICD", "icd_name", "foliocer", "causadef", 
 				"codcau11", "codcau21", "codcau31", "codcau41",  "codcau51", "site", 

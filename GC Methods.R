@@ -6,6 +6,10 @@
 #      7/29/14
 #
 
+require(edgeR)
+
+
+
 # ICD codes are almost, but not quite right:
 # ftp://ftp.cdc.gov/pub/Health_Statistics/NCHS/Publications/ICD10CM/2015/ICD10CM_FY2015_code_descriptions.zip
 # This is depredcated as I find that the CMS version of the ICD10 list is correct
@@ -82,7 +86,10 @@ readICDList <- function(aFile, fileFormat=10) {
 # Simple helper function
 cleanICDs <- function(x, drop.empty=TRUE) {
 	x  <- gsub(' ', '', (unlist(x)))  
-	if (drop.empty)  x <- x[nchar(x)>0] 
+	if (drop.empty) {
+		x <- x[!is.na(x)]
+		x <- x[nchar(x)>0]
+	}		
 	x  <- toupper(x)
 	return(x)
 }
@@ -93,48 +100,54 @@ cleanICDs <- function(x, drop.empty=TRUE) {
 # input mcdCols are in order, the first term being the actual cause of death and 
 # terms further to the right are increasingly distally antecedant.
 # To do:  should I initialize a transition matrix with all possibilites?   Nah..
-getMCDTransitionMatrix <- function(x, mcdCols=c("causadef", "codcau11", "codcau21", 
-												"codcau31", "codcau41", "codcau51"), ...) {
+getMCDTransitionMatrix <- function(x, priorMethod='Good-Turing', finalCause="gs_text",
+		mcdCols=c("codcau11", "codcau21", "codcau31", "codcau41", "codcau51"),
+		cofactors=c('gender', 'ageGroup', 'smokingGroup'), ...) {
 
-	numInput      <- nrow(x)
-	icdVec        <- sort(unique(cleanICDs(unlist(x[,mcdCols]), drop.empty=TRUE)))
-	n             <- length(icdVec)
-	codVec        <- rep(0, length(icdVec))
-	names(codVec) <- icdVec
+	x[,finalCause] <- make.names(x[,finalCause])
+	finalVec       <- sort(unique(x[, finalCause]))
+	icdVec         <- sort(unique(cleanICDs(unlist(x[,mcdCols]), drop.empty=TRUE)))
+
+	numInput       <- nrow(x)
+	nRows          <- length(icdVec)
+	nCols          <- length(finalVec)
+	QnBayes        <- matrix(rep(0, nRows*nCols), nrow=nRows, ncol=nCols, dimnames=list(icdVec, finalVec))
+	Q              <- QnBayes  # belay this for now
 	
-	# Q is the returned transition matrix for each step in the causal chains.
-	#   - The structure of Q is:   Q[ from,  to ]
-	# Qglobal is the "1-step" transition matrix from any causal event to 
-	# the terminal (causadef) event.
-	Q <- Qglobal <- matrix(rep(0, n^2), nrow=n, ncol=n, dimnames=list(icdVec, icdVec))
 	for (i in 1:numInput) {
 		rowVec    <- cleanICDs(x[i,mcdCols], drop.empty=TRUE)   # Delete empty cells
-		numCauses <- length(rowVec)
-		codVec[rowVec[1]] <- codVec[rowVec[1]] + 1
-		if (numCauses==1) {
-			Qglobal[rowVec[1], rowVec[1]] <- Qglobal[rowVec[1], rowVec[1]] + 1			
-			Q[rowVec[1], rowVec[1]]       <- Q[rowVec[1], rowVec[1]] + 1
-		} else {
-			for (j in numCauses:2) {
-				Qglobal[ rowVec[j], rowVec[1] ] <- Qglobal[ rowVec[j], rowVec[1] ] + 1
-				Q[ rowVec[j], rowVec[j-1] ]     <- Q[ rowVec[j], rowVec[j-1] ] + 1
-			}
+		if (length(rowVec)==0) next;
+		for (j in 1:length(rowVec)) {
+			cause  <- rowVec[j]
+			result <- x[i,finalCause]
+			QnBayes[cause, result] <- QnBayes[cause, result] + 1  
 		}
 	}
+
+	# Now add on the transition matrices for the cofactors (eg. gender, ageGroup & etc.)
+	# TO DO:  THINK ABOUT HOW TO DEAL WITH MISSING INFORMATION OR 'UNKNOWN' CATEGORIES.
+	#	     THESE MAY REALLY BE SKEWED BY JUST A FEW RANDOM CASES IN THE TRAINING DATA.
+	for (aCofactor in cofactors) {
+		Qcof    <- getCofactorTransitionMatrix(x, finalCause, cofactor=aCofactor, method=priorMethod)
+		Qcof    <- table(x[,aCofactor], x[,finalCause])
+		rownames(Qcof) <- cleanICDs(paste(aCofactor, rownames(Qcof), sep='.'))  # Do this for consistency later on
+#		rownames(Qcof) <- paste(aCofactor, rownames(Qcof), sep='.')
+		QnBayes <- rbind(QnBayes, Qcof)   # how to confirm the same columns and column order????
+	}
+
+	# codVec is the counts of each final cause of death by antecedant cause
+	codVec <- rowSums(QnBayes)
 	
 	# Transition matrix rows must sum to one
-	for (i in 1:n) {
-		if (sum(Q[i,])==0) Q[i,i] <- 1
-		Q[i,] <- Q[i,] / sum(Q[i,])
-		# Likewise for Qglobal
-		if (sum(Qglobal[i,])==0) Qglobal[i,i] <- 1
-		Qglobal[i,] <- Qglobal[i,] / sum(Qglobal[i,])
+	nRows <- nrow(QnBayes)
+	for (i in 1:nRows) {
+		if (sum(QnBayes[i,])==0) QnBayes[i,] <- 1/nCols
+#		QnBayes[i,] <- priorFunction(x=as.numeric(QnBayes[i,]), method=priorMethod, constant=.Machine$double.eps)		
+		QnBayes[i,] <- priorFunction(x=as.numeric(QnBayes[i,]), method=priorMethod, constant=1/sum(QnBayes[i,]))
+		QnBayes[i,] <- QnBayes[i,] / sum(QnBayes[i,])
 	}
-	
-	# codVec probabilities must sum to one
-	codVec   <- codVec / sum(codVec)
-	probObj  <- list(Q=Q, Qglobal=Qglobal, codVec=codVec, dimQ=dim(Q), numInputExamples=numInput)
-	
+
+	probObj  <- list(Q=Q, QnBayes=QnBayes, icdVec=icdVec, codVec=codVec, dimQ=dim(Q), numInputExamples=numInput)
 	return(probObj)
 }
 
@@ -142,34 +155,81 @@ getMCDTransitionMatrix <- function(x, mcdCols=c("causadef", "codcau11", "codcau2
 
 
 # -----------------------------------------
-# probObj    - the probObj obj with  list(Q, Qglobal, codVec, n)
+# A helper function for the transition matrix to account for events 
+# that weren't quite observed.  Ie a zero in an observation doesn't
+# mean that it can't happen, just that we didn't observe it yet...
+# I've kinda implemented goodTuring from library(edgeR), but am *not quite*
+# using it correctly...
+# 10/18/14 - after a *lot* of trial and error I see that the Good-Turing method doesn't
+#            always put a small number into the zero cells... urk.
+priorFunction <- function(x, method='Good-Turing', constant) {
+	zeroInx <- (x == 0)
+	nZero   <- sum(zeroInx)
+	
+	if (method=='square.min') {  	
+		fill       <- sqrt(min(x[x > 0], na.rm=TRUE)) / nZero
+		x[zeroInx] <- fill
+		if (!missing(constant)) x <- x + constant
+		return(x)
+		
+	} else if (method=='Good-Turing') {
+		fill       <- (goodTuring(x)$P0) / nZero   # not quite right...
+		x[zeroInx] <- fill
+		if (!missing(constant)) x <- x + constant
+		return(x)
+		
+	} else {
+		if (!missing(constant)) x <- x + constant
+		return(x)
+	}
+}
+
+
+# -----------------------------------------
+# A helper function to visualize the transition matrix
+visualizeTransitionMatrix <- function(Q) {
+	topYLabs <- sample(rownames(Q), 30)
+	xLabs    <- colnames(Q)
+	yLabs    <- rownames(Q)
+	yLabs[! yLabs %in% topYLabs] = ''
+	
+	heatmap(Q, scale='column', col=gray(32:0/32),  margins=c(5,5),
+		labRow=yLabs, labCo=xLabs)
+	bringToTop()
+}
+
+
+
+
+
+# -----------------------------------------
+# probObj    - the probObj obj with  list(Q, QnBayes, codVec, n)
 # evidence   - a vector of one or more MCD observations, ie  c("K709", "I608", "K550", "M259")
 bayesCompute <- function(evidence, probObj, ...) {
-#	print(class(x)); 
 	evidence          <- cleanICDs(evidence, drop.empty=TRUE)
 	goodEvInx         <- evidence %in% names(probObj$codVec)
 	dropEv            <- evidence[!goodEvInx]
-	if (length(dropEv) > 0) warning(paste('Couldnt find transition probabilities for', paste(dropEv, collapse=', ')))
+	if (length(dropEv) > 0) warning(paste("Couldn't find transition probabilities for", paste(dropEv, collapse=', ')))
 	evidence          <- evidence[goodEvInx]
 	obsVec            <- probObj$codVec * 0
-	obsVec[evidence]  <- 1
-
-	eStepVec    <- obsVec %*% (probObj$Q %^% length(evidence))
-	eStepVec    <- eStepVec[1,] / sum(eStepVec[1,])
-	eGlobalVec  <- obsVec %*% probObj$Qglobal 
-	eGlobalVec  <- eGlobalVec[1,] / sum(eGlobalVec[1,])
+	for (i in 1:length(evidence)) {  obsVec[evidence[i]]  <-  obsVec[evidence[i]] + 1 }
 	
-	outcomes <- list(evidence=evidence, dropEv=dropEv, eStepVec=eStepVec, eGlobalVec=eGlobalVec)
+	# 10/15/14 meeting with Abie indicates this is Naive Bayes and I should move forward with this.
+	naiveBayesVec  <- obsVec %*% log(probObj$QnBayes) 
+	naiveBayesVec  <- exp(naiveBayesVec[1,])
+	naiveBayesVec  <- naiveBayesVec / sum(naiveBayesVec)
+	
+	outcomes <- list(evidence=evidence, dropEv=dropEv, naiveBayesVec=naiveBayesVec)
 	return(outcomes)
 }
 
 
 showBayesCompute <- function(bayesDatObj) {
 	old.par <- par(mfrow=c(2,1))
-	barplot(head(sort(bayesDatObj$eStepVec[bayesDatObj$eStepVec >0], decreasing=TRUE), 10),
-			main='Top 10 predictions using the "Stepwise" approach', cex.names=0.8); grid()
-	barplot(head(sort(bayesDatObj$eGlobalVec[bayesDatObj$eGlobalVec >0], decreasing=TRUE),10),
-			main='Top 10 predictions using the "Global" approach', cex.names=0.8); grid()
+#	barplot(head(sort(bayesDatObj$eStepVec[bayesDatObj$eStepVec >0], decreasing=TRUE), 10),
+#			main='Top 10 predictions using the "Stepwise" approach', cex.names=0.8); grid()
+	barplot(head(sort(bayesDatObj$naiveBayesVec[bayesDatObj$naiveBayesVec >0], decreasing=TRUE),10),
+			main='Top 10 predictions using the Naive Bayes (1-gram) approach', cex.names=0.8); grid()
 	bringToTop()
 	cat('\nThe MCD trail is as follows:\n----------------------------\n')
 	for (i in 1:length(bayesDatObj$evidence)) {

@@ -37,6 +37,7 @@ library(gplots)
 library(gtools)       # smartbind  (to bind dfs with different columns)
 #library(RWeka)        # Various machine learning implementations
 library(expm)         # matrix exponentiation
+library(edgeR)        # Good-Turing estimator background for transition matrix
 
 source('GC Methods.R')
 
@@ -205,10 +206,10 @@ xyplot(as.numeric(MCD) ~ jitter(causeOrder, amount=0.01) | groupings, groups=sid
 # See 'discrete hidden Markov model (DHMM)   http://www.robots.ox.ac.uk/~vgg/rg/slides/hmm.pdf
 # See also:  http://en.wikipedia.org/wiki/Bayesian_inference#Multiple_observations
 #   Q - each step in the causal chain is included in the matrix  [from, to]
-#   Qglobal - only the terminal events are 
+#   QnBayes - only the terminal events are 
 
 source('GC Methods.R')
-Q = getMCDTransitionMatrix(x=dat[sample(nrow(dat),40),])$Qglobal
+Q = getMCDTransitionMatrix(x=dat[sample(nrow(dat),40),])$QnBayes
 Q = getMCDTransitionMatrix(x=dat[dat$icd_name=='_gc',])$Q
 heatmap.2(apply(Q, 1:2, asinh), trace='none', col=rev(gray(0:18/18)), ylab='Antecedant cause...', xlab='...Leads to')
 heatmap.2(Q %^% 5, trace='none', ylab='Antecedant cause...', xlab='...Leads to')
@@ -256,42 +257,66 @@ evidence <- c('I509')  # sid 643 died of IHD - Acute Myocardial Infarction
 evidence <- c('J960', 'J81', 'N189', 'E119', 'I10')
 results  <- bayesCompute(evidence, probObj);  str(results)
 tail(sort(results$eStepVec))
-tail(sort(results$eGlobalVec))
+tail(sort(results$naiveBayesVec))
 
 # FULL SCALE RUN.
 source('GC Methods.R')
+goodCols <- c(1,4,10,12:17, which(names(dat) %in% c("age", 'ageGroup',"gender", "education", 
+													"cigsPerDay", 'smokingGroup')))
 someIds <- sample(dat$sid[dat$icd_name != '_gc'])
 dat[dat$sid %in% someIds[10:15], goodCols]
 
+
 # Note here I am also ingesting the 'causadef' field.   Above I saw that causadef for _gc and non_gc
 # patients were completely disjoint sets.
-probObj  <- getMCDTransitionMatrix(x=dat[dat$sid %in% someIds,],
-				mcdCols=c("gs_text", "causadef", "codcau11", "codcau21", "codcau31", "codcau41", "codcau51"))
-str(probObj)
-results  <- bayesCompute(evidence=c("C924","J960","R048","C924"), probObj);  str(results)
-tail(sort(results$eStepVec))
-tail(sort(results$eGlobalVec))
-barplot(head(sort(results$eGlobalVec, decreasing=TRUE)), cex.names=0.5); grid()
+dat[1:5, goodCols]
+source('GC Methods.R')
+x=dat[dat$sid %in% someIds,]
+probObj  <- getMCDTransitionMatrix(x=x, priorFunction='Good-Turing',
+				mcdCols=c("codcau11", "codcau21", "codcau31", "codcau41", "codcau51"),
+				finalCause="gs_text", cofactors=c('gender', 'ageGroup', 'smokingGroup'))
+
+junk = probObj$QnBayes[sample(nrow(probObj$QnBayes),30), sample(ncol(probObj$QnBayes),7)]
+str(probObj);  signif(junk,2);
+visualizeTransitionMatrix(probObj$QnBayes)
+
+source('GC Methods.R')
+results  <- bayesCompute(evidence=c("C924","J960","R048","C924", 'gender.Female'), probObj);  str(results)
+head(sort(results$naiveBayesVec, decreasing=TRUE))
 showBayesCompute(results)
 
-bestCall <- function(x, ...) { 
-	result = bayesCompute(evidence=x, ...)$eGlobalVec
+source('GC Methods.R')
+mcdCols=c("codcau11", "codcau21", "codcau31", "codcau41", "codcau51")
+
+# A minifunction for ddply that takes in 1 line of dat
+bestCall.2 <- function(x, mcdCols, cofactors, ...) {
+	evidence = unlist(x[ mcdCols ])
+	for (aCofactor in cofactors) {
+		evidence <- c(evidence, cleanICDs(paste(aCofactor, as.character(x[,aCofactor]), sep='.')))
+	}
+	result = bayesCompute(evidence=evidence, ...)$naiveBayesVec
 	return(names(sort(result, decreasing=TRUE))[1])
 }
-mcdCols=c("causadef", "codcau11", "codcau21", "codcau31", "codcau41", "codcau51")
-bestCall(dat[60, mcdCols], probObj=probObj)
+bestCall.2(x=dat[16,], mcdCols=mcdCols, cofactors=c('ageGroup', 'gender'), probObj=probObj)
+
+
 
 # Again, note here I'm doing predictions with the causadef field
-datBayes <- ddply(dat[sample(nrow(dat),100), goodCols], .(sid), mutate, 
-					eGlobal=bestCall(x=c(causadef, codcau11, codcau21, codcau31, codcau41, codcau51), probObj=probObj))
+someRows <- sample(nrow(dat),50)
+someRows <- which(dat$icd_name=='_gc')
+
+datBayes <- dat[,goodCols]
+datBayes$naiveBayes <- NA
+for (i in 1:nrow(datBayes)) {
+	datBayes[i,'naiveBayes'] <- bestCall.2(x=datBayes[i,], mcdCols=mcdCols, cofactors=c('ageGroup', 'gender'), probObj=probObj)
+}										
+datBayes <- cbind(datBayes[,1:3], naiveBayes=datBayes[,ncol(datBayes)], datBayes[,4:(ncol(datBayes)-1)])
+head(datBayes)
 
 write.csv(datBayes, file='datBayes.csv', quote=FALSE)
 
 
-# Start work on method for sussing out the n-grams in prep for HMM.
-#   PUT THE FOLLOWING ON HOLD WHILE WORKING ON MARKOV MODELS AND
-#   A TRANSITION MATRIX.
-#x = dat[2, grep('causa|codcau', names(dat), value=TRUE, perl=TRUE)]
-source('GC Methods.R')
-reportBigrams(x)
+
+
+
 
