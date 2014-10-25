@@ -44,7 +44,13 @@ Temporary Items
 
 
 Data/
+Info_and_Results/
 *.pdf
 *.pper
+*.pptx
+*.csv
+*.xlsx
+*.html
+*.RData
 .Rproj.user/
 *.Rproj
