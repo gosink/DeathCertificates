@@ -10,6 +10,19 @@ require(edgeR)
 
 
 
+# -----------------------------------------
+# Maps y onto x in the sense that it returns a list of of y corresponding
+# to sort(unique(x)) such that the y's are the first y's seen in sort(x)
+map <- function(x, y) {
+	temp   <- data.frame(x=x, y=y, stringsAsFactors=FALSE)
+	result <- ddply(temp, .(x), summarize, y[1])[,2]
+	return(result)
+}
+
+#str(map(x=c(1:6,1:6), y=LETTERS[c(1:12)]))
+
+
+
 # ICD codes are almost, but not quite right:
 # ftp://ftp.cdc.gov/pub/Health_Statistics/NCHS/Publications/ICD10CM/2015/ICD10CM_FY2015_code_descriptions.zip
 # This is depredcated as I find that the CMS version of the ICD10 list is correct
@@ -128,7 +141,7 @@ getMCDTransitionMatrix <- function(x, priorMethod='Good-Turing', finalCause="gs_
 	# TO DO:  THINK ABOUT HOW TO DEAL WITH MISSING INFORMATION OR 'UNKNOWN' CATEGORIES.
 	#	     THESE MAY REALLY BE SKEWED BY JUST A FEW RANDOM CASES IN THE TRAINING DATA.
 	for (aCofactor in cofactors) {
-		Qcof    <- getCofactorTransitionMatrix(x, finalCause, cofactor=aCofactor, method=priorMethod)
+#		Qcof    <- getCofactorTransitionMatrix(x, finalCause, cofactor=aCofactor, method=priorMethod)
 		Qcof    <- table(x[,aCofactor], x[,finalCause])
 		rownames(Qcof) <- cleanICDs(paste(aCofactor, rownames(Qcof), sep='.'))  # Do this for consistency later on
 #		rownames(Qcof) <- paste(aCofactor, rownames(Qcof), sep='.')
@@ -138,16 +151,18 @@ getMCDTransitionMatrix <- function(x, priorMethod='Good-Turing', finalCause="gs_
 	# codVec is the counts of each final cause of death by antecedant cause
 	codVec <- rowSums(QnBayes)
 	
-	# Transition matrix rows must sum to one
+	# Need to add a background or prior value on the transitions that are zero.
+	# Also, transition matrix rows must sum to one.
 	nRows <- nrow(QnBayes)
 	for (i in 1:nRows) {
 		if (sum(QnBayes[i,])==0) QnBayes[i,] <- 1/nCols
-#		QnBayes[i,] <- priorFunction(x=as.numeric(QnBayes[i,]), method=priorMethod, constant=.Machine$double.eps)		
-		QnBayes[i,] <- priorFunction(x=as.numeric(QnBayes[i,]), method=priorMethod, constant=1/sum(QnBayes[i,]))
+		QnBayes[i,] <- priorFunction(x=as.numeric(QnBayes[i,]), method=priorMethod, constant=.Machine$double.eps)		
+#		QnBayes[i,] <- priorFunction(x=as.numeric(QnBayes[i,]), method=priorMethod, constant=1/(sum(QnBayes[i,])))
 		QnBayes[i,] <- QnBayes[i,] / sum(QnBayes[i,])
 	}
 
-	probObj  <- list(Q=Q, QnBayes=QnBayes, icdVec=icdVec, codVec=codVec, dimQ=dim(Q), numInputExamples=numInput)
+	probObj  <- list(Q=Q, QnBayes=QnBayes, icdVec=icdVec, codVec=codVec, dimQ=dim(Q), numInputExamples=numInput,
+					priorMethod=priorMethod)
 	return(probObj)
 }
 
@@ -245,6 +260,55 @@ showBayesCompute <- function(bayesDatObj) {
 	cat('\n')
 	par(old.par)
 }
+
+
+
+
+
+# -----------------------------------------
+# HAVEN'T STARTED THIS YET.   NEED TO BREAK IT OUT AS IT'S OWN FUNCTION.
+# EVERYTHING HERE IS JUST CUT AND PASTED FROM MY SCRIPTING LINES..
+#  TO DO:  
+#    0. Correctly figure out how to group and panel arbitrary data
+#    0.1 correctly incorporate cofactors into figures
+#    1. Ordered causality
+#    2. Visualize as a complete Naive Bayes  (eg. one step transition)
+visualizeCausalChains <- function() {
+
+	# A plot for each final cause of death  
+	icdGuess(dat[sample(nrow(dat), 30), 'codcau21'])  # Here is a sample of ICD descriptions
+	codBucket  <- with(temp2, unique(MCD[ grepl('_gc', icd_name) & causeOrder==1]))    # one way to search
+	idBucket   <- with(temp2, unique(sid[ gs_text=='Homicide' ]))    # by gs_text
+	descBucket <- with(temp2, unique(MCD[ grepl('infarction', MCDfull, ignore.case=TRUE) ]))  # more descriptive
+	idBucket   <- with(temp2, unique(sid[ (MCD %in% descBucket) ]))
+	temp3      <- subset(temp2, subset = ((sid %in% idBucket) & (as.numeric(MCD) > 1)))
+
+	pdf(file='MCD Paths from the Mexico Data Set.pdf', width=11, height=8.5)
+	for (aText in sort(unique(temp2$gs_text))) {
+		idBucket   <- with(temp2, unique(sid[ gs_text==aText ]))    # everyone who has this gs_text
+		temp3      <- subset(temp2, subset = ((sid %in% idBucket) & (as.numeric(MCD) > 1)))
+
+		yLabels <- as.character(count(temp3$MCD)$x)
+		yLabels <- sample(yLabels, size=min(5,length(yLabels)))  
+		yAt     <- match(yLabels, levels(temp3$MCD)) 
+
+		ageGroups   <- cut(temp3$age, breaks=c(-2,2,16,50,200), labels=c('Infant', 'Child', 'Adult', 'Senior'))  
+		colGroups   <- c('red', 'blue')[as.numeric(as.factor(temp3$gender))]  # display.brewer.all()
+		pointGroups <- c(49:52)[as.numeric(ageGroups)]                        # pch=48:57  are '0' -> '9'
+
+		aPlot <- xyplot(as.numeric(MCD) ~ jitter(causeOrder, amount=0.1) | icd_name, groups=sid, data=temp3, type=c('b','g'),
+						main=paste('All patients with "gs_text" (died from):', aText, '\n(panel by icd_name)'),
+						sub=list('\nBlue=male, Red=Female\n1=Infant, 2=Child, 3=Adult, 4=Senior', cex=0.7),
+						col=colGroups, pch=pointGroups, cex=1,
+						scales=list(y=list(at=yAt, labels=yLabels, relation='same')),
+						xlab='< < <== Direction of Causality', ylab='ICD-10 Code'); #bringToTop()
+		print(aPlot)
+	}					
+
+}
+
+
+
 
 
 
