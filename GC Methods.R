@@ -149,7 +149,9 @@ getMCDTransitionMatrix <- function(x, priorMethod='Good-Turing', finalCause="gs_
 	}
 
 	# codVec is the counts of each final cause of death by antecedant cause
-	codVec <- rowSums(QnBayes)
+	codVec  <- rowSums(QnBayes)
+	rawMat  <- QnBayes     # will I need this?
+
 	
 	# Need to add a background or prior value on the transitions that are zero.
 	# Also, transition matrix rows must sum to one.
@@ -161,7 +163,7 @@ getMCDTransitionMatrix <- function(x, priorMethod='Good-Turing', finalCause="gs_
 		QnBayes[i,] <- QnBayes[i,] / sum(QnBayes[i,])
 	}
 
-	probObj  <- list(Q=Q, QnBayes=QnBayes, icdVec=icdVec, codVec=codVec, dimQ=dim(Q), numInputExamples=numInput,
+	probObj  <- list(Q=Q, QnBayes=QnBayes, rawMat=rawMat, icdVec=icdVec, codVec=codVec, dimQ=dim(Q), numInputExamples=numInput,
 					priorMethod=priorMethod)
 	return(probObj)
 }
