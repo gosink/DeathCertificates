@@ -34,6 +34,7 @@ library(gplots)
 library(ggplot2)
 library(gtools)       # smartbind  (to bind dfs with different columns)
 library(edgeR)        # Good-Turing estimator background for transition matrix
+library(MCMCpack)     # Dirichlet sampling
 
 source('GC Methods.R')
 
@@ -66,11 +67,15 @@ probObj  <- getMCDTransitionMatrix(x=x, priorFunction='Good-Turing',
 
 junk = probObj$QnBayes[sample(nrow(probObj$QnBayes),30), sample(ncol(probObj$QnBayes),7)]
 str(probObj);  signif(junk,2);
+probObj$rawMat[probObj$codVec > 30, 1:5]
+
+
+
 visualizeTransitionMatrix(probObj$QnBayes)
 
 #    Second, use the transition matrix to compute the probabe outcome of test data
 source('GC Methods.R')
-results  <- bayesCompute(evidence=c("C924","J960","R048","C924", 'gender.Female'), probObj);  str(results)
+results  <- bayesCompute(evidence=c('J189', 'J969', 'AGEGROUP.ADULT', 'gender.Female'), probObj);  str(results)
 head(sort(results$naiveBayesVec, decreasing=TRUE))
 showBayesCompute(results)
 
@@ -81,11 +86,12 @@ source('GC Methods.R')
 inx      <- dat$icd_name != '_gc'
 goodCols <- c(1,4,10,12:17, which(names(dat) %in% c("age", 'ageGroup',"gender", "education", 
 													"cigsPerDay", 'smokingGroup')))
+													
+mcdCols=c("causadef", "codcau11", "codcau21", "codcau31", "codcau41", "codcau51")
+													
 probObj  <- getMCDTransitionMatrix(x=dat[inx, ], priorFunction='Good-Turing',
-				mcdCols=c("codcau11", "codcau21", "codcau31", "codcau41", "codcau51"),
-				finalCause="gs_text", cofactors=c('gender', 'ageGroup', 'smokingGroup'))
+				mcdCols=mcdCols, finalCause="gs_text", cofactors=c('gender', 'ageGroup', 'smokingGroup'))
 
-mcdCols=c("codcau11", "codcau21", "codcau31", "codcau41", "codcau51")
 
 # A minifunction for ddply that takes in 1 line of dat
 bestCall.2 <- function(x, mcdCols, cofactors, ...) {
@@ -95,30 +101,55 @@ bestCall.2 <- function(x, mcdCols, cofactors, ...) {
 			evidence <- c(evidence, cleanICDs(paste(aCofactor, as.character(x[,aCofactor]), sep='.')))
 		}
 	}
-	print(length(evidence))
-	result = bayesCompute(evidence=evidence, ...)$naiveBayesVec
-	return(names(sort(result, decreasing=TRUE))[1])
+	result  = sort(bayesCompute(evidence=evidence, ...)$naiveBayesVec, decreasing=TRUE)
+	myCall  = names(result)[1]
+	prob    = result[1]
+#	print(str(result))
+	logOdds = log(prob/(sum(result[-1])))
+	return(c(bestCall=myCall, logOdds=logOdds))
 }
 bestCall.2(x=dat[16,], mcdCols=mcdCols, cofactors=c('ageGroup', 'gender'), probObj=probObj)
 
 #someRows <- sample(nrow(dat),50)         # sample just 50 rows
 #someRows <- which(dat$icd_name=='_gc')   # try just the _gc data
 
+mcdCols=c("causadef", "codcau11", "codcau21", "codcau31", "codcau41", "codcau51")
 datBayes <- dat[,goodCols]   # process the whole shebang
+datBayes <- cbind(datBayes[,1:3], 'naiveBayes'=NA, 'logOdds'=NA, datBayes[,4:ncol(datBayes)]) 
 datBayes$naiveBayes <- NA
+datBayes$logOdds    <- NA
 for (i in 1:nrow(datBayes)) {
-	datBayes[i,'naiveBayes'] <- bestCall.2(x=datBayes[i,], 
-											mcdCols=c("codcau11", "codcau21", "codcau31", "codcau41", "codcau51"), 
+	datBayes[i,c('naiveBayes', 'logOdds')] <- bestCall.2(x=datBayes[i,], 
+											mcdCols=mcdCols, 
 											cofactors=c('gender', 'ageGroup'), 
 											probObj=probObj)
-}										
-datBayes <- cbind(datBayes[,1:3], naiveBayes=datBayes[,ncol(datBayes)], datBayes[,4:(ncol(datBayes)-1)])
+}
 datBayes$gs_text <- make.names(datBayes$gs_text)
+datBayes$logOdds <- as.numeric(datBayes$logOdds)
 head(datBayes)
 
-# 10/27/14  - Blows a gasket if no cofactors and sid=762,  (Infant), and does it serially...??
+glort = as.numeric(datBayes$gs_text == datBayes$naiveBayes)
+xyplot(jitter(glort, amount=0.02) ~ logOdds | gs_text, data=datBayes,
+	type=c('p', 'smooth'), span=1, 
+	as.table=TRUE, 	par.strip.text=list(lines=0.8, cex=0.7),
+	scales=list(x=list(relation='free')))
 
 
+
+# Visualize Cause Specific Mortality Fraction (CSMF)
+library(ggplot2)
+a = data.frame(table(datBayes$naiveBayes)); a$source='Bayes'
+b = data.frame(table(datBayes$gs_text));    b$source='gs_text'
+ab = rbind(a,b)
+ab$Var1 <- reorder(ab$Var1, ab$Freq, median)
+ggplot(ab, aes(x=Var1, y=Freq/1587, fill=source)) +
+	geom_bar(position='dodge', stat='identity') +
+	theme(axis.text.x=element_text(angle=45, hjust=1, vjust=1)) +
+	labs(x='Cause of Death', y='CSMF', title='Cause Specific Mortality Counts (estimated and observed)')
+
+
+	
+	
 #write.csv(datBayes, file='datBayes.csv', quote=FALSE)  # save it for perusal in Excel & etc
 #save(datBayes, file='datBayes.RData')                  # save it for further R work
 
@@ -174,13 +205,13 @@ dev.off()
 #          - set up automated sensitivity and specificity test for each category
 	
 	
-	
+
 	
 # Take a closer look at pneumonia:
-inx <- which(datBayes$gs_text == 'Pneumonia')
-inx <- inx[ order(datBayes[inx,'naiveBayes']) ]
+inx <- which(datBayes$gs_text == 'Pneumonia')      # gs_text says they're pneumonia
+inx <- inx[ order(datBayes[inx,'naiveBayes']) ]    
 datBayes[inx, ]
-ddply(datBayes[inx,], .(naiveBayes), summarize, res=length(gs_text))
+ddply(datBayes[inx,], .(naiveBayes), summarize, res=length(gs_text))   # here is what my code called them
 
 # Following figure is NOT informative.   Columnwise, both the well predicted and poorly predicted
 # data look similar to each other..
@@ -194,25 +225,49 @@ points(sort(probObj$QnBayes[,'Diabetes']), col='blue')   # very good sens
 
 	
 	
+# ====================  C S M F  =================== #
+# Several papers by Abie and Murray et. al. indicate that automated methods
+# for determining mortality often fail.  I am now writing up functions to
+# calculate the Cause Specific Mortality Fraction (CSMF) for a number of cross
+# validation runs on the data.   As per the papers I create different subsets of
+# data, each with bigger or smaller fractions of various causes of death (by
+# resampling with replacement).   Then I split those data into training and
+# test data sets and look at the relationship between expected and observed
+# fractions for each mortality group.
+source('GC Methods.R')
+categories=c('Stroke', 'AIDS', 'Diabetes', 'Other.Non.communicable.Diseases', 'Breast.Cancer')
+categories=c('Stroke', 'AIDS')
+categories=make.names(c('Prostate Cancer'))
+categories=make.names(unique(dat$gs_text))
+
+
+csmf  <- cvRun(x=dat, fractions=seq(0, 2, length.out=17), categories=categories, testFraction=0.25)
+str(csmf); csmf.bak = csmf
+maxFrac <- max(c(csmf$predFrac, csmf$obsFrac), na.rm=TRUE)
+xyplot(predFrac ~ obsFrac | cause, data=csmf, 
+	type=c('p', 'g'), pch=19,
+	subset=category==cause, #xlim=c(0,maxFrac), ylim=c(0,maxFrac),
+	par.strip.text=list(lines=1, cex=0.7),
+	scales=list(x=list(relation='free', rot=45), y=list(relation='free', rot=45)),
+	as.table=TRUE,  xlab='True Cause Fraction', ylab='Estimated Cause Fraction',
+	panel = function(x,y, ...){
+		panel.xyplot(x, y, ...)
+		panel.lmline(x, y, col='blue', lty=2)
+		panel.lmline(c(x,y), c(x,y), col='red')
+	})
+
 	
-# Come back to this later?
-# http://charliepark.org/slopegraphs/
-source('C:/Users/John/Desktop/R_Scripts/r-slopegraph/slopegraph.r')
-data <- read.csv("C:/Users/John/Desktop/R_Scripts/r-slopegraph/cancer_survival_rates.csv")
-##' Convert raw data to right format
-df <- build_slopegraph(data, x="year", y="value", group="group", method="tufte", min.space=0.05)
-
-## Refactor the x-axis to get the right labels, round the y values for presentation
-df <- transform(df, x=factor(x, levels=c(5,10,15,20),
-                        labels=c("5 years", "10 years", "15 years", "20 years")), y=round(y))
-##' Generate the raw plot
-gg.form <- plot_slopegraph(df) + labs(title="Estimates of % survival rates") 
-gg.form
-
-
-
-
-
+subset(csmf, subset=(category=='Poisonings' & cause==category))
+	
+	
+# TO DO:
+# - Dirichlet sampling for cross validation
+#  Next two from "Robust metrics for verbal autopsy"
+# - Correcting for concordance p.5
+# - CSMFAccuracy   p. 7
+#
+#
+#
 
 
 

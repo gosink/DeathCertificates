@@ -109,7 +109,11 @@ dat$age         <- as.numeric(dat$g1_07a)
 inx             <- is.na(dat$age)
 dat[inx,'age']  <- as.numeric(dat[inx,'g1_06y']) - as.numeric(dat[inx,'g1_01y'])
 plot(sort(dat$age)); grid()
-dat$ageGroup   <- cut(dat$age, breaks=c(-2,2,16,50,200), labels=c('Infant', 'Child', 'Adult', 'Senior'))  
+#dat$ageGroup   <- cut(dat$age, breaks=c(-2,2,16,50,200), labels=c('Infant', 'Child', 'Adult', 'Senior'))  
+dat$ageGroup   <- cut(dat$age, breaks=c(-2,0,11,200), labels=c('Neonate', 'Child', 'Adult'))
+dat[is.na(dat$c1_26), 'c1_26']                    <- ''
+dat[dat$c1_26=='Less than 28 days', 'ageGroup']   <- 'Neonate'
+dat[dat$c1_26=='28 days to 11 years', 'ageGroup'] <- 'Child'
 plot(table(dat$ageGroup))
 
 

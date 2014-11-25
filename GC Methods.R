@@ -228,6 +228,10 @@ bayesCompute <- function(evidence, probObj, ...) {
 	dropEv            <- evidence[!goodEvInx]
 	if (length(dropEv) > 0) warning(paste("Couldn't find transition probabilities for", paste(dropEv, collapse=', ')))
 	evidence          <- evidence[goodEvInx]
+	if (length(evidence) == 0) 
+		return(list(evidence=evidence, dropEv=dropEv, naiveBayesVec=colSums(probObj$QnBayes)/sum(probObj$QnBayes)))
+	
+	
 	obsVec            <- probObj$codVec * 0
 	for (i in 1:length(evidence)) {  obsVec[evidence[i]]  <-  obsVec[evidence[i]] + 1 }
 	
@@ -308,6 +312,183 @@ visualizeCausalChains <- function() {
 	}					
 
 }
+
+
+
+# -----------------------------------------
+# A mini-call to for use in iteratively calling/guessing the CoD
+# in a dataframe of MCD evidence.
+bestCall.2 <- function(x, probObj, mcdCols, cofactors, ...) {
+	evidence = cleanICDs(unlist(x[ mcdCols ]))
+	if (! missing(cofactors)) {
+		for (aCofactor in cofactors) {
+			evidence <- c(evidence, cleanICDs(paste(aCofactor, as.character(x[,aCofactor]), sep='.')))
+		}
+	}
+	result  = sort(bayesCompute(evidence=evidence, probObj=probObj, ...)$naiveBayesVec, decreasing=TRUE)
+	myCall  = names(result)[1]
+	prob    = result[1]
+#	print(str(result))
+	logOdds = log(prob/(sum(result[-1])))
+	return(c(bestCall=myCall, logOdds=logOdds))
+}
+
+
+
+# -----------------------------------------
+# Cause Specific Mortality Fractions (CSMF)
+#  See "Robust metrics..." p. 6
+# x   vector of inferred causes
+# y   vector of gold standard causes
+calculateCSMF <- function(x, y, allCauses) {
+	if (missing(allCauses))  allCauses <- unique(c(x,y))
+	csmf <- data.frame(cause=allCauses, obs=NA, obsFrac=NA,
+						pred=NA, predFrac=NA, stringsAsFactors=FALSE)
+	if (length(x) != length(y)) stop('\n  x and y need to be the same length!\n\n')
+	N   <- length(allCauses)
+#print(data.frame(x=x, y=y))
+	for (aCause in allCauses) {
+		inx                   <- csmf$cause == aCause
+		truePos               <- sum(y == aCause)
+		trueNeg               <- sum(y != aCause)
+		csmf[inx, 'obs']      <- truePos
+		csmf[inx, 'obsFrac']  <- csmf[inx, 'obs'] / length(x)
+		csmf[inx, 'pred']     <- sum(x == aCause)
+		csmf[inx, 'predFrac'] <- csmf[inx, 'pred'] / length(x)
+		ccc   <- ( (truePos / (truePos+trueNeg)) - (1/N) )  / (1 - (1/N))
+		csmf[inx, 'CCC']      <- ccc
+	}
+	
+	return(csmf)
+}
+
+
+# -----------------------------------------
+# See "Robust metrics..." p. 7
+#   http://www.ncbi.nlm.nih.gov/pmc/articles/PMC3160921/
+# x   vector of inferred causes
+# y   vector of gold standard causes
+calculateCSMFAccuracy <- function(x, y, allCauses) {
+	if (missing(allCauses))  allCauses <- unique(c(x,y))
+	denom        <- 0
+	if (length(x) != length(y)) stop('\n  x and y need to be the same length!\n\n')
+	minTruePos  <- length(allCauses)
+	for (aCause in allCauses) {
+		truePos  <- sum(y == aCause)
+		truePred <- sum(x == aCause)
+		minTruePos <- ifelse(minTruePos > truePos, truePos, minTruePos)
+		denom      <- denom + abs(truePos - truePred)/length(x) 
+	}
+	minTruePos <- minTruePos / length(x) 
+	csmfAcc    <- 1 - (denom / (2*(1-minTruePos)))
+	
+	return(csmfAcc)
+}
+
+
+
+
+# -----------------------------------------
+# Don't know yet how to do Dirichlet sampling, instead for each category
+# of interest, resample more or less items of that type and then fill in 
+# the rest with a random sampling of items *not* in that category. 
+# For each gs_text sample(gs_text, 1:2n)  + sample(everything - number already picked)
+sampleFractions <- function(x, minNum, maxNum, categories=c('Stroke', 'AIDS', 'Diabetes')) {
+	minNum <- ifelse(missing(minNum), 1, minNum)  # min number of a certain category
+	maxNum <- ifelse(missing(maxNum), 3, maxNum)  # a multiplicative value
+	choiceFrame <- NULL
+	for (aCategory in categories) {
+		xRow   <- which(x == aCategory)
+		notX   <- which(x != aCategory)
+		xCount <- length(xRow)
+		# Could fail if a certain category starts off pretty big
+		for (i in 1:25) {
+			numKeepers  <- ceiling(runif(1, minNum, maxNum*xCount))
+			keepers     <- sample(xRow, numKeepers, replace=TRUE)
+			keepers     <- c(keepers, sample(notX, length(x) - length(keepers), replace=TRUE))
+			choiceFrame <- rbind(choiceFrame, data.frame(category=aCategory, run=i, 
+														numKeepers=numKeepers, keep=keepers, 
+														stringsAsFactors=FALSE))
+		}
+	}
+	return(choiceFrame)
+}
+
+#junk = sampleFractions(x=datBayes$gs_text); str(junk)
+
+# -----------------------------------------
+# Cross validate with the various sample fractions
+# x            the original data frame
+# numSamples   the number of fractional population sizes you would like to test
+# maxMultiple  max multiple of the original obs population fraction you would like to test
+# categories   which gs_text categories would you like to test
+# testFraction fraction that will be test data, the rest will be training data.
+# fractions    multiplicative values for the observed fractions of interesting categories.
+#              That is, synthesize test data sets with these multiples of the observed data fraction.
+# Dirichlet sampling at:  http://127.0.0.1:20951/library/MCMCpack/html/dirichlet.html
+cvRun <- function(x, fractions=c(0,0.5,1,2), categories, testFraction=0.25, ...) {
+	# foreach category and run create a new data frame via the selected rows.
+	# partition it in 75% train,   25% test
+	# create a probObj, then run it on the test data
+	# calculateCSMF and store results 
+	mcdCols      <- c("codcau11", "codcau21", "codcau31", "codcau41", "codcau51")
+	cofactorCols <- c('gender', 'ageGroup')
+	csmf         <- NULL    # return object
+	x$gs_text    <- make.names(x$gs_text)
+	x$naiveBayes <- NA
+	x$logOdds    <- NA
+	for (aCategory in unique(categories)) {
+#		for (i in 1:numSamples) {
+		for (aFraction in fractions) {
+			rowSample   <- sample(nrow(x), replace=FALSE)         # a radomization of the row numbers
+			cutoff      <- round(nrow(x) * testFraction)          # size of the testDat
+			obsCatFrac  <- sum(x$gs_text == aCategory) / nrow(x)  # observed CSMF for this category
+			targetFrac  <- obsCatFrac * aFraction
+#			targetFrac <- (obsCatFrac * maxMultiple) / (numSamples/i)
+			targetNum  <- ceiling(targetFrac * cutoff)
+#cat('\n  -------------------\n')
+cat(aCategory, '  obsCatFrac=', obsCatFrac, '  targetNum=', targetNum, '  targetFrac=', targetFrac, '  cutoff=', cutoff, '\n')
+
+			testDat   <- x[rowSample[1:cutoff], ]
+			trainDat  <- x[-c(rowSample[1:cutoff]), ]
+			catInx    <- which(testDat$gs_text == aCategory)
+			if (length(catInx) == 0)  {
+#cat('reworking\n')
+				testDat <- rbind(x[sample(which(x$gs_text == aCategory), 1), ], testDat)
+				cat('reworking\n')
+				catInx <- 1
+			}
+
+#cat('\n  * Sum of catInx:', sum(catInx), '\n\n')
+			x1        <- testDat[catInx,]    # all subjects in the test data set who ARE in the category
+			x2        <- testDat[-catInx,]   # everything in testDat that is NOT the category of interest
+			
+			x1Rows   <- sample(nrow(x1), targetNum, replace=TRUE)
+			testDat  <- x1[x1Rows,]                          # make the new testDat with a sample of the target category...
+			if (targetNum == 0) testDat <- NULL
+			x2Inx    <- min(c(nrow(x2), cutoff-targetNum))   # plus enough non-category to fill it out to expected length
+			testDat  <- rbind(testDat, x2[1:x2Inx,])
+			probObj  <- getMCDTransitionMatrix(x=trainDat, priorFunction='Good-Turing',
+							mcdCols=mcdCols, cofactors=cofactorCols,
+							finalCause="gs_text")
+#print(dim(testDat))
+			for (j in 1:nrow(testDat)) {
+				testDat[j,c('naiveBayes', 'logOdds')] <- bestCall.2(x=testDat[j,], 
+														probObj=probObj,
+														mcdCols=mcdCols, 
+														cofactors=cofactorCols)
+			}
+#print(tail(testDat[,1:10]))			
+			csmfTemp            <- calculateCSMF(x=testDat$naiveBayes, y=testDat$gs_text)
+			csmfTemp$targetNum  <- targetNum
+			csmfTemp$targetFrac <- targetFrac
+			csmfTemp$category   <- aCategory
+			csmf                <- rbind(csmf, csmfTemp)
+		}
+	}
+	return(csmf)
+}
+
 
 
 
