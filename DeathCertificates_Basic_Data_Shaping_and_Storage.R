@@ -118,7 +118,9 @@ plot(table(dat$ageGroup))
 
 
 dat$gender      <- dat$g1_05
+dat[nchar(dat$gender)==0,'gender']  <- dat[nchar(dat$gender)==0, 'g5_02']
 dat[nchar(dat$gender)==0,'gender']  <- 'Unknown'
+
 
 dat$education   <- dat$g1_09
 dat[nchar(dat$education)==0,'education']  <- 'Unknown'

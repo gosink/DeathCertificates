@@ -1,0 +1,202 @@
+---
+title: "Bayesian Analysis of Death Certificates"
+author: "John Gosink"
+date: "Tuesday, January 13, 2015"
+output: pdf_document
+---
+  
+
+Consider the MCD fields to be likely nodes in a network.  People often die
+from  disease A --> B --> C(ardiac arrest).   So there should be an emission pattern
+of  A -> B   and  B -> C  and a common grouping of A,B, & C.
+ 
+Also the emission likelihood is influenced by age, gender, & etc.
+Also you can have hidden states: ie we may not have B on the certificate, but it can be inferred.
+Might also be value in stemming the codes or otherwise considering adjacent codes
+Might also be value in parsing the long text of codes to find associations
+
+   -John Gosink
+    8/12/14
+
+
+
+Details of the ICD codes:    
+http://en.wikipedia.org/wiki/ICD-10    
+http://en.wikipedia.org/wiki/ICD-10_Chapter_XX:_External_causes_of_morbidity_and_mortality  
+CMS32_DESC_LONG_DX.txt  ICD9 codes   
+icd10cm_order_2015.txt  ICD10 codes   
+
+
+
+```{r Load_up_and_get_going, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+
+rm(list=ls())
+setwd('C:/Users/John/Desktop/DeathCertificates/')
+library(lattice)       # graphics
+library(latticeExtra)  # graphics
+library(plyr)          # Map/Reduce type operations
+library(gplots)        # more graphics
+library(ggplot2)       # 
+library(gtools)        # smartbind  (to bind dfs with different columns)
+library(edgeR)         # Good-Turing estimator background for transition matrix
+library(MCMCpack)      # Dirichlet sampling
+library(knitr)         # printing data frames
+
+source('GC Methods.R')
+source('C:/Users/John/Desktop/R_Scripts/gosink_methods.R')
+
+# -----------------------------------------------
+# Start by reading in the Mexico death certificate data.   This supposedly has the data from 1589 Mexican
+# subjects.   These are 'gold standard' reviewed documents and 224 of them are noted as being garbage codes.
+# Prep the data in the other script file, 'DeathCertificates_Basic_Data_Shaping_and_Storage.R'
+load(file='dat.RData')          # Load the (1587x67) data as processed in earlier
+load(file='datBayes.RData')     # In development.   Most recent predictions
+load(file='icd10Vec.RData')     # 91,737 ICD-10 definitions
+load(file='colDesc.RData')      # Descriptions of the column headers (547 headers as a named vector)
+```
+
+
+*****
+
+  
+```{r test_many_flavors, echo=FALSE, warning=FALSE, results='asis',  fig.fullwidth=TRUE}
+
+source('GC Methods.R')
+
+nSamples <- 10
+goodCols <- c(1,4,10,12:17, which(names(dat) %in% c("age", 'ageGroup',"gender", "education", 
+													"cigsPerDay", 'smokingGroup')))
+
+
+testingGrid <-  expand.grid(replicate=1:10, nSamples=nSamples,
+                            ageGroup=c('Adult'), gender=0:1,  nGrams=2,
+  						priorMethod=c('Good-Turing'), constant=.Machine$double.eps,
+              useQ2=c(TRUE, FALSE), columnNormalize=c(TRUE,FALSE),
+							stringsAsFactors=FALSE)
+
+testingGrid <-  expand.grid(replicate=1:10, nSamples=nSamples,
+                            ageGroup=c('Adult'), gender=0:1,  nGrams=2,
+    					priorMethod=c('Good-Turing'), constant=.Machine$double.eps,
+              useQ2=c(FALSE), columnNormalize=c(TRUE,FALSE), useCausadef=c(TRUE,FALSE),
+							stringsAsFactors=FALSE)
+
+testingGrid <- cbind(testingGrid, csmfAccuracy=NA, meanCCC=NA, meanpCCC1=NA)
+
+exclusions <- c('Stillbirth')  #, 'Poisonings', 'Suicide', 'Diarrhea/Dysentery')
+
+
+for (i in 1:nrow(testingGrid)) {
+#for (i in sample(nrow(testingGrid), 5)) {
+  
+  print(kable(testingGrid[i,], format="markdown"))
+  cat('\n\n****\n\n')
+  
+	dat1 <- subset(dat[,goodCols], subset=(ageGroup==testingGrid[i,'ageGroup']) &
+	                                      !(gs_text %in% exclusions))
+
+  cofactorCols <- c('gender', 'ageGroup')
+#  if (testingGrid[i,'gender'] == 0) dat1$gender = 'Glort'
+  if (testingGrid[i,'gender'] == 0) cofactorCols <- c('ageGroup')
+
+  mcdCols <- c("codcau11", "codcau21", "codcau31", "codcau41", "codcau51")
+  if (testingGrid[i,'useCausadef']) mcdCols <- c('causadef', mcdCols)
+
+	retList <- cvRun(x=dat1, nSamples=nSamples, testFraction=0.25, 
+                   progress=FALSE, 
+                   cofactorCols=cofactorCols, mcdCols=mcdCols,
+                   nGrams=testingGrid[i,'nGrams'],
+                   useQ2=testingGrid[i, 'useQ2'],
+                   columnNormalize=testingGrid[i, 'columnNormalize'],
+                   priorMethod=testingGrid[i,'priorMethod'], 
+                   constant=testingGrid[i,'constant'])
+
+  	
+  plot(xyplot(predFrac ~ obsFrac | cause, data=retList$csmf2, 
+  	type=c('p', 'g'), pch=19, alpha=0.3,  
+  	main=as.character(retList$probObj$createTime),
+  	par.strip.text=list(lines=1, cex=0.7),
+  	scales=list(x=list(relation='same', rot=45), y=list(relation='same', rot=45)),
+  	as.table=TRUE,  xlab='True Cause Fraction', ylab='Estimated Cause Fraction',
+  	panel = function(x,y, score, ...){
+  		panel.xyplot(x, y, ...)
+  		panel.lmline(x, y, col='blue', lty=1)
+  		panel.lmline(c(x,y), c(x,y), col='red', lty=2)
+  	}))
+  
+  
+  
+  # How do CSMF compare when using all of the info in the Naive Bayes estimate vs.
+  # picking just the top scoring CoD from the estimate? 
+  b=ddply(retList$csmf2, .(cause), summarize, mean(CCC[is.finite(CCC)]))
+  a=ddply(retList$csmf,  .(cause), summarize, mean(CCC[is.finite(CCC)]))
+  temp = cbind(a[,1:2],b[,2])
+  colnames(temp) <- c('cause', 'csmf', 'csmf2')
+  temp$cause = factor(temp$cause)
+  plot(xyplot(csmf2 ~ csmf, groups=reorder(cause, -csmf2, mean), data=temp, type=c('p','g'), 
+  	par.settings=simpleTheme(pch=1:25, cex=1.3), 
+  	main=paste('Comparison of CCC picking just the best CoD for each subject (x-axis)',
+  	           'or assigning partial fractions for each CoD for each subject (y-axis)', sep='\n'),
+  	xlab='Single best CoD assignment', ylab='Fractional CoD assignments',
+  	auto.key=list(space='right', points=TRUE, cex=0.8)))
+  
+  
+  
+  		
+  # In the final paper as per "Robust metrics..." p. 8+	
+  # 1. Average chance-corrected concordance of individual cause assignment (p. 8 Discussion)
+  temp <- ddply(retList$csmf, .(cause), summarize, mean(CCC[is.finite(CCC)]))
+  colnames(temp) <- c('cause', 'meanCCC')
+  print(kable(temp, format='markdown'))
+  cat('\n\n****\n\n')
+  
+  temp <- with(retList$csmf, mean(CCC[is.finite(CCC)]))
+  testingGrid[i, 'meanCCC'] <- temp
+  cat('The overall mean is:   ', temp, '   \n')
+  cat('\n\n****\n\n')
+  
+  
+  # 2. pCCC(k)  -  (p. 8 Discussion)
+  print(kable(summary(retList$pCCC[,2:5]), format="markdown"))
+  cat('\n\n****\n\n')  
+  testingGrid[i, 'meanpCCC1'] <- mean(retList$pCCC[,2], na.rm=TRUE)
+  
+  
+  # 3. Median CSMFAccuracy (middle left column p. 8, & Discussion)
+  medAcc <- median(retList$csmf$CSMFAccuracy)
+  testingGrid[i, 'csmfAccuracy'] <- medAcc
+  cat('The median CSMFAccuracy is: ', medAcc, '     \n')   
+  cat('\n\n****\n\n')  
+  
+  	
+  # 3.5. Regression coefficients (upper right column p. 8)
+  fitParams <- function(x,y) {
+  	fit       <- lm(y ~ x)
+  	alpha     <- coefficients(summary(lm(y ~ x)))[1,1]
+  	beta1     <- coefficients(summary(lm(y ~ x)))[2,1]
+  	r.squared <- summary(fit)$r.squared
+  	sigma     <- summary(fit)$sigma
+  	return(c(alpha=alpha, beta=beta1, sigma=sigma, r.squared=r.squared))
+  }
+  
+  a = ddply(retList$csmf, .(cause), function(x) fitParams(x=x$obsFrac, y=x$predFrac))
+  paramTable <- cbind(CoD=a[,1], signif(a[,2:5], 3))
+  colnames(paramTable) <- c('cause', 'intercept', 'beta', 'rSquared', 'sigma')
+  print(kable(paramTable, format="markdown"))
+  cat('\n\n****\n\n') 
+  
+  
+  # 4.  Full NxN matrix for the process
+  mat = pairsToMatrix(rowVals=retList$bayesDat$gs_text, colVals=retList$bayesDat$inferred, 
+  					square=TRUE) #, allVals=dat$gs_text) 
+  mat = t(apply(mat, 1, function(x) { x=x+1; log(x/sum(x))} ))
+  heatmap(mat, Rowv=NA, Colv=NA, main='Observed (rows) vs. Predicted (columns) CoD',
+          col=gray(32:0/32),  margins=c(7,7))
+  
+  save(file='testingGrid.RData', testingGrid)
+}
+
+
+```
+
+
+

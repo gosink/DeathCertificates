@@ -73,7 +73,7 @@ probObj$rawMat[probObj$codVec > 30, 1:5]
 
 visualizeTransitionMatrix(probObj$QnBayes)
 
-#    Second, use the transition matrix to compute the probabe outcome of test data
+#    Second, use the transition matrix to compute the probable outcome of test data
 source('GC Methods.R')
 results  <- bayesCompute(evidence=c('J189', 'J969', 'AGEGROUP.ADULT', 'gender.Female'), probObj);  str(results)
 head(sort(results$naiveBayesVec, decreasing=TRUE))
@@ -260,14 +260,10 @@ xyplot(predFrac ~ obsFrac | cause, data=csmf,
 subset(csmf, subset=(category=='Poisonings' & cause==category))
 	
 	
-# TO DO:
-# - Dirichlet sampling for cross validation
-#  Next two from "Robust metrics for verbal autopsy"
-# - Correcting for concordance p.5
-# - CSMFAccuracy   p. 7
-#
-#
-#
+# ==============================
+# new approach using the calculated
+
+
 
 
 
