@@ -63,7 +63,7 @@ load(file='colDesc.RData')      # Descriptions of the column headers (547 header
 
 source('GC Methods.R')
 
-nSamples <- 10
+nSamples <- 11
 goodCols <- c(1,4,10,12:17, which(names(dat) %in% c("age", 'ageGroup',"gender", "education", 
 													"cigsPerDay", 'smokingGroup')))
 
@@ -72,15 +72,15 @@ testingGrid <-  expand.grid(replicate=1:10, nSamples=nSamples,
                             ageGroup=c('Adult'), gender=0:1,  nGrams=2,
   						priorMethod=c('Good-Turing'), constant=.Machine$double.eps,
               useQ2=c(TRUE, FALSE), columnNormalize=c(TRUE,FALSE),
-							stringsAsFactors=FALSE)
+							equalTrainSizes=c(TRUE,FALSE), stringsAsFactors=FALSE)
 
 testingGrid <-  expand.grid(replicate=1:10, nSamples=nSamples,
-                            ageGroup=c('Adult'), gender=0:1,  nGrams=2,
+                            ageGroup=c('Adult'), gender=1,  nGrams=2,
     					priorMethod=c('Good-Turing'), constant=.Machine$double.eps,
-              useQ2=c(FALSE), columnNormalize=c(TRUE,FALSE), useCausadef=c(TRUE,FALSE),
-							stringsAsFactors=FALSE)
+              useQ2=c(FALSE), columnNormalize=c(FALSE), useCausadef=c(TRUE),
+              equalTrainSizes=c(TRUE,FALSE), stringsAsFactors=FALSE)
 
-testingGrid <- cbind(testingGrid, csmfAccuracy=NA, meanCCC=NA, meanpCCC1=NA)
+testingGrid <- cbind(testingGrid, csmfAccuracy=NA, medianCCC=NA, medianpCCC1=NA)
 
 exclusions <- c('Stillbirth')  #, 'Poisonings', 'Suicide', 'Diarrhea/Dysentery')
 
@@ -104,6 +104,7 @@ for (i in 1:nrow(testingGrid)) {
 	retList <- cvRun(x=dat1, nSamples=nSamples, testFraction=0.25, 
                    progress=FALSE, 
                    cofactorCols=cofactorCols, mcdCols=mcdCols,
+                   equalTrainSizes=testingGrid[i, 'equalTrainSizes'],
                    nGrams=testingGrid[i,'nGrams'],
                    useQ2=testingGrid[i, 'useQ2'],
                    columnNormalize=testingGrid[i, 'columnNormalize'],
@@ -127,12 +128,12 @@ for (i in 1:nrow(testingGrid)) {
   
   # How do CSMF compare when using all of the info in the Naive Bayes estimate vs.
   # picking just the top scoring CoD from the estimate? 
-  b=ddply(retList$csmf2, .(cause), summarize, mean(CCC[is.finite(CCC)]))
-  a=ddply(retList$csmf,  .(cause), summarize, mean(CCC[is.finite(CCC)]))
+  b=ddply(retList$csmf2, .(cause), summarize, median(CCC[is.finite(CCC)]))
+  a=ddply(retList$csmf,  .(cause), summarize, median(CCC[is.finite(CCC)]))
   temp = cbind(a[,1:2],b[,2])
   colnames(temp) <- c('cause', 'csmf', 'csmf2')
   temp$cause = factor(temp$cause)
-  plot(xyplot(csmf2 ~ csmf, groups=reorder(cause, -csmf2, mean), data=temp, type=c('p','g'), 
+  plot(xyplot(csmf2 ~ csmf, groups=reorder(cause, -csmf2, median), data=temp, type=c('p','g'), 
   	par.settings=simpleTheme(pch=1:25, cex=1.3), 
   	main=paste('Comparison of CCC picking just the best CoD for each subject (x-axis)',
   	           'or assigning partial fractions for each CoD for each subject (y-axis)', sep='\n'),
@@ -144,21 +145,21 @@ for (i in 1:nrow(testingGrid)) {
   		
   # In the final paper as per "Robust metrics..." p. 8+	
   # 1. Average chance-corrected concordance of individual cause assignment (p. 8 Discussion)
-  temp <- ddply(retList$csmf, .(cause), summarize, mean(CCC[is.finite(CCC)]))
-  colnames(temp) <- c('cause', 'meanCCC')
+  temp <- ddply(retList$csmf, .(cause), summarize, median(CCC[is.finite(CCC)]))
+  colnames(temp) <- c('cause', 'medianCCC')
   print(kable(temp, format='markdown'))
   cat('\n\n****\n\n')
   
-  temp <- with(retList$csmf, mean(CCC[is.finite(CCC)]))
-  testingGrid[i, 'meanCCC'] <- temp
-  cat('The overall mean is:   ', temp, '   \n')
+  temp <- with(retList$csmf, median(CCC[is.finite(CCC)]))
+  testingGrid[i, 'medianCCC'] <- temp
+  cat('The overall median is:   ', temp, '   \n')
   cat('\n\n****\n\n')
   
   
   # 2. pCCC(k)  -  (p. 8 Discussion)
   print(kable(summary(retList$pCCC[,2:5]), format="markdown"))
   cat('\n\n****\n\n')  
-  testingGrid[i, 'meanpCCC1'] <- mean(retList$pCCC[,2], na.rm=TRUE)
+  testingGrid[i, 'medianpCCC1'] <- median(retList$pCCC[,2], na.rm=TRUE)
   
   
   # 3. Median CSMFAccuracy (middle left column p. 8, & Discussion)

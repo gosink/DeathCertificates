@@ -43,16 +43,21 @@ Temporary Items
 .apdisk
 
 
-Data/
-Info_and_Results/
+
+# =========================
+# Specific things to not include in the public repository
 *.pdf
+*.PDF
 *.pper
 *.pptx
 *.csv
 *.xlsx
 *.html
 *.RData
-.Rproj.user/
+*.RHistory
 *.Rproj
 *.RData
-*.csv
+
+Data/
+Info_and_Results/
+.Rproj.user/
