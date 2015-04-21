@@ -57,7 +57,7 @@ datBayes = subset(datBayes, subset=c(gs_text != 'Stillbirth'))
 goodCols <- c(1,4,10,12:17, which(names(dat) %in% c("age", 'ageGroup',"gender", "education", 
 													"cigsPerDay", 'smokingGroup')))
 someIds  <- dat[dat$gs_text != 'Stillbirth', 'sid']
-someIds  <- dat[dat$ageGroup == 'Child', 'sid']
+someIds  <- dat[dat$ageGroup == 'Adult', 'sid']
 mcdCols  <- c("causadef", "codcau11", "codcau21", "codcau31", "codcau41", "codcau51")
 
 datBayes <- dat[dat$sid %in% someIds, goodCols]   
@@ -78,10 +78,10 @@ head(datBayes)
 #save(datBayes, file='datBayes.RData')                                   # save it for further R work
 
 # Diagnose failures of the system:
-subject  <- datBayes[datBayes$sid==1503, ]
+subject  <- datBayes[datBayes$sid==1144, ]
 evidence <- unlist(c(subject[,mcdCols], as.character(interaction('AGEGROUP',subject$ageGroup)), 
 					as.character(interaction('GENDER',subject$gender))))
-results  <- bayesCompute(evidence=evidence, probObj)
+results  <- bayesCompute(evidence=evidence, probObj=probObj)
 head(sort(results$naiveBayesVec, decreasing=TRUE))
 showBayesCompute(results)
 
@@ -164,10 +164,19 @@ goodCols <- c(1,4,10,12:17, which(names(dat) %in% c("age", 'ageGroup',"gender", 
 exclusions  <- c('Stillbirth')  #, 'Poisonings', 'Suicide', 'Diarrhea/Dysentery')
 dat1        <- subset(dat[,goodCols], subset=(!(gs_text %in% exclusions)) & (ageGroup == 'Adult'))
 
-retList  <- cvRun(x=dat1, nSamples=5, testFraction=0.25,  nGrams=2, useQ2=TRUE, 
-					columnNormalize=TRUE,
+Rprof()
+retList  <- cvRun(x=dat1, nSamples=15, testFraction=0.25,  nGrams=2, useQ2=TRUE, 
+					mcdCols=c("causadef", "codcau11", "codcau21", "codcau31", "codcau41", "codcau51"), 
+					useLinNorm=TRUE, columnNormalize=FALSE,  equalTrainSizes=TRUE,
 					priorFunction='Good-Turing', constant=.Machine$double.eps)
+Rprof(NULL)
+summaryRprof()
+					
 str(retList, max.level=2); retList.bak = retList
+write.csv(retList$bayesDat, file='bayesDat.csv', quote=FALSE, row.names=FALSE)
+write.csv(retList$csmf, file='csmf.csv', quote=FALSE, row.names=FALSE)
+write.csv(retList$pCCC, file='pCCC.csv', quote=FALSE, row.names=FALSE)
+write.csv(retList$probList[[1]]$QnBayes, file='QnBayes.csv', quote=FALSE, row.names=TRUE)
 
 
 
@@ -177,10 +186,14 @@ str(retList, max.level=2); retList.bak = retList
 #  testingGrid.RData             101 CVs of gender, nGrams, prior, constant  (Adults only)
 #
 load('testingGrid.RData')
+write.csv(testingGrid, file='testingGrid.csv', quote=FALSE, row.names=FALSE)
 load('testingGrid - 1_21_15.RData')  # this is the better log(Q2) version
 testingGrid[order(testingGrid$csmfAccuracy, decreasing=TRUE),]
+testingGrid[1:20,]
 #fit = lm(csmfAccuracy ~  gender + useQ2 + nGrams + useQ2, data=testingGrid); summary(fit)
-fit = lm(csmfAccuracy ~  gender + columnNormalize + useCausadef, data=testingGrid); summary(fit)
+#fit = lm(csmfAccuracy ~  gender + columnNormalize + useCausadef, data=testingGrid); summary(fit)
+fit = lm(csmfAccuracy ~  gender + useQ2 + columnNormalize + equalTrainSizes, data=testingGrid); summary(fit)
+fit = lm(medianCCC ~  gender + useQ2 + columnNormalize + equalTrainSizes, data=testingGrid); summary(fit)
 
 
 #
@@ -194,10 +207,10 @@ fit = lm(csmfAccuracy ~  gender + columnNormalize + useCausadef, data=testingGri
 #  - picking a single best assignment is a few percent better medianCCC than using fractional assignments
 #  - the same patterns of 'from' and 'to' assignments occur for adult, child, and neonates.  
 #    This is frustrating as I thought the multiplication by probObj$Q2 would eliminate this.  
-#     useQ2  may DROP CSMFAccuracy by 3% 
+#  - useQ2  has no effect on CSMFAccuracy
+#  - use of equal training sizes for all categories improves CSMFAccuracy by 6-7% 
 #  - use of columnNormalization improves CSMFAccuracy by ~3-4% 
 #  - use of causadef improves CSMFAccuracy by ~4-5%
-
 
 
 
@@ -208,8 +221,11 @@ xyplot(pred ~ obs, groups=cause, data=retList$csmf, type=c('p', 'r', 'g'),
 	par.settings=simpleTheme(col=brewer.pal(n=8, 'Dark2'), pch=19:23, lty=1:2),
 	auto.key=list(space='right', lines=TRUE, cex=0.8))
 	
+plot(retList$csmf$CSMFAccuracy, retList$csmf2$CSMFAccuracy); grid(); abline(a=0, b=1)
+	
 #score = brewer.pal(n=6, 'Spectral')[cut(retList$csmf$score, breaks=c(-1,1,2,4,8,16,2000))]
-xyplot(predFrac ~ obsFrac | cause, data=retList$csmf2, 
+junk = linearAdjustCSMF(retList$csmf, retList$csmfTrain)
+xyplot(predFrac ~ obsFrac | cause, data=junk, #retList$csmf, 
 	type=c('p', 'g'), pch=19, alpha=0.3, #col=score, 
 	main=as.character(retList$probList[[1]]$createTime),
 	par.strip.text=list(lines=1, cex=0.7),
@@ -332,20 +348,46 @@ for (i in 1:25) superQ2 = superQ2 + retList$probList[[i]]$Q2
 
  
 # Test out new method (bestCall.3) for assessing all probabilities from a set of data.  Takes ~4 seconds.
-trainDat=dat1[sample(nrow(dat1)),]; nGrams=1;  prior='Good-Turing'; constant=.Machine$double.eps 
+trainDat=dat1[sample(nrow(dat1)),]; nGrams=2;  prior='Good-Turing'; constant=.Machine$double.eps 
 mcdCols=c("causadef", "codcau11", "codcau21", "codcau31", "codcau41", "codcau51"); cofactorCols=c('gender', 'ageGroup')
-allCauses = sort(unique(dat1$gs_text)); probObj=retList$probObj
+allCauses = sort(unique(dat1$gs_text)); probObj=retList$probObj[[1]]
 a=apply(trainDat, 1, function(x) { bestCall.3(x=x, probObj=probObj, mcdCols=mcdCols, cofactors=cofactors, nGrams=1, allCauses=allCauses) })
 a=data.frame(t(a), stringsAsFactors=FALSE)
 a$observed=make.names(trainDat$gs_text); str(a)
+
+
+# Attempt to implement the linearNormalize method again  4/15/15
+#  dat1 defined up above around line 166.   probObj around line 66
+dat1$gs_text <- make.names(dat1$gs_text)
+trainResult  <- apply(dat1, 1, function(x) { 
+			  bestCall.3(x=x, probObj=probObj, mcdCols=mcdCols, cofactors=cofactorCols, 
+						 nGrams=2, allCauses=allCauses) })
+trainResult          <- data.frame(t(trainResult), stringsAsFactors=FALSE)
+trainResult$gs_text  <- dat1$gs_text
+
+
+
+
+
+# Possible problem with CV sampling:
+source('GC Methods.R')
+x = data.frame(gs_text=c(rep(LETTERS[1:5], each=5), 'Z'), score=1:26, stringsAsFactors=FALSE)
+x = rbind(x[1:5,], x)
+for (i in 1:10) {
+	a = cvSample(x, testFraction=0.25, equalTrainSizes=TRUE)
+	if (length(unique(x$gs_text)) != length(unique(a$trainDat$gs_text))) break
+	print(table(a$trainDat$gs_text))
+}
+table(a$trainDat$gs_text)
 
 
 
 		
 # In the final paper as per "Robust metrics..." p. 8+	
 # 1. Average chance-corrected concordance of individual cause assignment (p. 8 Discussion)
-ddply(retList$csmf, .(cause), summarize, mean(CCC[is.finite(CCC)]))
-with(retList$csmf, mean(CCC[is.finite(CCC)]))   # overall or grand median
+# On p. 6, we should use the median.
+ddply(retList$csmf, .(cause), summarize, median(CCC[is.finite(CCC)]))
+with(retList$csmf, median(CCC[is.finite(CCC)]))   # overall or grand median
 
 
 
@@ -355,6 +397,7 @@ summary(retList$pCCC)
 
 # 3. Median CSMFAccuracy (middle left column p. 8, & Discussion)
 median(retList$csmf$CSMFAccuracy)   # approx 0.71 for adults
+median(retList$csmf2$CSMFAccuracy)   # approx 0.71 for adults
 
 
 	

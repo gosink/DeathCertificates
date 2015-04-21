@@ -270,8 +270,9 @@ visualizeTransitionMatrix <- function(Q, ...) {
 	yLabs      <- rownames(Q)
 	yLabs[! yLabs %in% topYLabs] = ''
 	
-	heatmap(Q, scale='column', col=gray(32:0/32),  margins=c(5,5),
-		labRow=yLabs, labCo=xLabs)
+	heatmap(Q, scale='column', col=gray(32:0/32),  margins=c(10,14),
+		labRow=yLabs, labCo=xLabs, srtCol=45)
+		
 	bringToTop()
 }
 
@@ -281,9 +282,12 @@ visualizeTransitionMatrix <- function(Q, ...) {
 # -----------------------------------------
 # probObj    - the probObj obj with  list(QnBayes, codVec, n, etc.)
 # evidence   - a vector of one or more MCD observations, ie  c("K709", "I608", "K550", "M259")
+# ! Should I use a Bernoulli model instead??:  http://en.wikipedia.org/wiki/Naive_Bayes_classifier#Bernoulli_naive_Bayes
+# ! Don't currently account for CoD
+#
 bayesCompute <- function(evidence, probObj, nGrams=1, ...) {
-	evidence          <- cleanICDs(evidence, drop.empty=TRUE)
-	evidence          <- nGramFunction(evidence, n=nGrams, sep='.')
+#	evidence          <- cleanICDs(evidence, drop.empty=TRUE)
+#	evidence          <- nGramFunction(evidence, n=nGrams, sep='.')
 
 	goodEvInx         <- evidence %in% names(probObj$codVec)
 	dropEv            <- evidence[!goodEvInx]
@@ -293,14 +297,17 @@ bayesCompute <- function(evidence, probObj, nGrams=1, ...) {
 		return(list(evidence=evidence, dropEv=dropEv, naiveBayesVec=colSums(probObj$QnBayes)/sum(probObj$QnBayes)))
 	
 	obsVec            <- probObj$codVec * 0
-	for (i in 1:length(evidence)) {  obsVec[evidence[i]]  <-  obsVec[evidence[i]] + 1 }
+#	for (i in 1:length(evidence)) {  obsVec[evidence[i]]  <-  obsVec[evidence[i]] + 1 }
+	eviTab            <- table(evidence)
+	obsVec[names(eviTab)]  <- obsVec[names(eviTab)] + eviTab 
+	
 	
 	# 10/15/14 meeting with Abie indicates this is Naive Bayes and I should move forward with this.
 	naiveBayesVec  <- obsVec %*% log(probObj$QnBayes) 
 	naiveBayesVec  <- exp(naiveBayesVec[1,])
 	naiveBayesVec  <- naiveBayesVec / sum(naiveBayesVec)
 	QPartial       <- probObj$QnBayes[evidence, names(sort(naiveBayesVec, decreasing=TRUE))]   # interesting return obj
-	outcomes <- list(evidence=evidence, dropEv=dropEv, naiveBayesVec=naiveBayesVec, QPartial=QPartial)
+	outcomes       <- list(evidence=evidence, dropEv=dropEv, naiveBayesVec=naiveBayesVec, QPartial=QPartial)
 	return(outcomes)
 }
 
@@ -343,7 +350,8 @@ showBayesCompute <- function(bayesDatObj) {
 #    0.1 correctly incorporate cofactors into figures
 #    1. Ordered causality
 #    2. Visualize as a complete Naive Bayes  (eg. one step transition)
-visualizeCausalChains <- function(x, orderedCauses=c(11:6), colorGroups='gender', pchGroups='smokingGroup') {
+visualizeCausalChains <- function(x, orderedCauses=c(17:12), maxLabels=7, 
+						colorGroups='gender', pchGroups='smokingGroup') {
 
 	temp          <- reshape(x, idvar='sid', varying=orderedCauses, v.names='MCD', direction='long')
 	temp$MCD      <- cleanICDs(temp$MCD, drop.empty=FALSE)
@@ -358,7 +366,7 @@ visualizeCausalChains <- function(x, orderedCauses=c(11:6), colorGroups='gender'
 
 		# Pick a sample of MCDs to decorate the y-axis
 		yLabels <- as.character(count(temp2$MCD)$x)
-		yLabels <- sample(yLabels, size=min(7, length(yLabels)))  
+		yLabels <- sample(yLabels, size=min(maxLabels, length(yLabels)))  
 		yAt     <- match(yLabels, levels(temp2$MCD)) 
 
 		colorChoices <- brewer.pal(n=8, 'Dark2')
@@ -464,11 +472,13 @@ bestCall.3 <- function(x, probObj, mcdCols, cofactors, nGrams=1, allCauses, ...)
 # Dirichlet sampling from gtools
 cvRun <- function(x, nSamples=17, testFraction=0.25, nGrams=1, priorMethod='Good-Turing', constant=.Machine$double.eps, 
 					mcdCols=c("causadef", "codcau11", "codcau21", "codcau31", "codcau41", "codcau51"),
-					cofactorCols=c('gender', 'ageGroup'), useQ2=TRUE, columnNormalize=FALSE, 
-					progress=TRUE, ...) {
+					cofactorCols=c('gender', 'ageGroup'), useQ2=FALSE, useLinNorm=FALSE, columnNormalize=FALSE, 
+					equalTrainSizes=TRUE, progress=TRUE, ...) {
 
 	csmf         <- NULL    # return object
 	csmf2        <- NULL    # return object
+	csmfTrain    <- NULL    # return object
+	csmfLinNorm  <- NULL    # return object  (linear normalization)
 	pCCC         <- NULL    # return object
 	bigTest      <- NULL    # return object
 	bayesDat     <- NULL    # return object
@@ -477,12 +487,14 @@ cvRun <- function(x, nSamples=17, testFraction=0.25, nGrams=1, priorMethod='Good
 	allCauses    <- sort(unique(x$gs_text))
 	N            <- length(allCauses)
 	probList     <- NULL
+	errorFile    <- "Error messages.txt"
+	unlink(errorFile)
 	if (progress) cat('\n  Working on CV replicate: \n')
 	for (aRep in 1:nSamples) {
 		if (progress) iterationCount(i=aRep, reportFreq=1, last=nSamples)
-		ttList              <- cvSample(x, testFraction)
-		trainDat            <- ttList$trainDat
-		testDat             <- ttList$testDat
+		ttList      <- cvSample(x, testFraction,  equalTrainSizes)
+		trainDat    <- ttList$trainDat
+		testDat     <- ttList$testDat
 		
 		probObj  <- getMCDTransitionMatrix(x=trainDat, nGrams=nGrams,
 						priorMethod=priorMethod, constant=constant,
@@ -491,14 +503,6 @@ cvRun <- function(x, nSamples=17, testFraction=0.25, nGrams=1, priorMethod='Good
 		
 		if (progress) plot(table(testDat$gs_text), main=paste('Iteration', aRep))
 		
-		# Do the calculations for the training data
-		trainResult <- apply(trainDat, 1, function(x) { 
-						bestCall.3(x=x, probObj=probObj, mcdCols=mcdCols, cofactors=cofactorCols, 
-									nGrams=nGrams, allCauses=allCauses, ...) })
-		trainResult          <- data.frame(t(trainResult), stringsAsFactors=FALSE)
-		trainResult$observed <- trainDat$gs_text
-		if (!all(sort(unique(trainResult$observed)) == allCauses))
-			stop(paste('\n Failure to have allCauses in the trainResult on rep', aRep, '\n'))
 		
 		# Do the calculations for the test data
 		testResult <- apply(testDat, 1, function(x) { 
@@ -509,12 +513,44 @@ cvRun <- function(x, nSamples=17, testFraction=0.25, nGrams=1, priorMethod='Good
 		# Correct for expected missassignment by reversing choice bias from Bayes estimate.
 		# For example, deaths labelled 'Diabetes' are often from many differnt causes.
 		if (useQ2) {
-			Q2             <- ddply(trainResult, .(observed), colwise(sum))
+			# Resample the cases using Dirichelt sampling
+			trainDat    <- trainDat[match(unique(trainDat$sid), trainDat$sid), ]
+			ttList2     <- cvSample(x=trainDat, testFraction=0.3,  ...)
+			probObj2    <- getMCDTransitionMatrix(x=ttList2[['trainDat']], nGrams=nGrams,
+								priorMethod=priorMethod, constant=constant,
+								mcdCols=mcdCols, cofactors=cofactorCols,
+								finalCause="gs_text", columnNormalize=columnNormalize, ...)
+#			cat('Rep', aRep, "  and there are ", length(colnames(probObj2$QnBayes)), " columns in probObj2\n")
+			# careful here, this 'trainResult' is actually the testResult on the trainResult...
+			trainResult <- apply(ttList2[['testDat']], 1, function(x) { 
+						bestCall.3(x=x, probObj=probObj2, mcdCols=mcdCols, cofactors=cofactorCols, 
+									nGrams=nGrams, allCauses=allCauses, ...) })
+			trainResult          <- data.frame(t(trainResult), stringsAsFactors=FALSE)
+			trainResult$gs_text  <- ttList2[['testDat']]$gs_text
+			missingGS            <- allCauses[! allCauses %in% trainResult$gs_text ]
+			for (aCause in missingGS) {
+				temp <- trainResult[1,-ncol(trainResult), drop=FALSE] * 0 + .Machine$double.eps
+				temp[,aCause] <- 0.99
+				temp$gs_text  <- aCause
+				trainResult   <- rbind(temp, trainResult)
+			}
+			
+#			print(str(trainResult)); stop()
+			
+			# Now create a transition matrix (Q2) to reverse the biases from the bigger
+			# naive Bayes machine.   Thus, I adjust the values on the 'testResult' object.
+			Q2             <- ddply(trainResult, .(gs_text), colwise(sum))
 			Q2             <- t(apply(Q2[,-1], 1, function(x) x/sum(x)))
-			rownames(Q2)   <- colnames(Q2)
-			probObj$Q2     <- t(Q2)     # Whoa, I think I have to do this so that columns are the TRUTH (gs_text)
-			testResult     <- exp(testResult %*% log(probObj$Q2))  # 1/21/15 use the log(Q2) ???  
-		}
+#			print(str(Q2))
+			rownames(Q2)   <- colnames(Q2) # cols are inferred,  rows are observed (gs_text)
+			probObj$Q2     <- t(Q2)
+			attr(probObj$Q2, 'Description') <- paste('Rows are inferred classifications',  
+												'Columns are observed (gs_text) classifications',
+												sep='.  ')
+#			print(str(probObj$Q2)); stop();
+			testResult     <- exp(testResult %*% log(probObj$Q2))  # 1/21/15 use the log(Q2) ???  			
+		}		
+		
 		probList[[aRep]]  <- probObj
 		
 		testResult <- data.frame(testResult, stringsAsFactors=FALSE)
@@ -525,34 +561,68 @@ cvRun <- function(x, nSamples=17, testFraction=0.25, nGrams=1, priorMethod='Good
 		
 		# Pick the most likely CoD for each patient.   Then calculate CSMFAccuracy in the standard way.
 		# In a minute I'll go back and calculate CSMF & etc on the basis of partial calls (see csmf2).
-		probCols            <- which(colnames(testResult) %in% allCauses)
+		probCols   <- which(colnames(testResult) %in% allCauses)
+
+		testResult$matchPosition <- apply(testResult, 1, function(z) { match(z['gs_text'], 
+				names(z[probCols])[order(as.numeric(z[probCols]), decreasing=TRUE)]) })
+		
 		testResult$inferred <- apply(testResult, 1, function(z) {  
 									names(z[probCols])[order(as.numeric(z[probCols]), decreasing=TRUE)][1] })
+									
 		csmfTemp    <- calculateCSMF(inferred=testResult$inferred, 
 									observed=testResult$gs_text, 
 									allCauses=allCauses)
 									
 		# Similar to above, but calculations based on partial CoD calls.
 		csmf2Temp   <- csmfCount(testResult, allCauses=allCauses)
-		
-		csmfTemp$CSMFAccuracy <- calculateCSMFAccuracy(inferred=testResult$inferred, 
-														observed=testResult$gs_text, 
-														allCauses=allCauses)
 
-		pCCCTemp              <- calculatePCCCk(x=testResult, K=1:4, allCauses=allCauses)
-		pCCCTemp$cvReplicate  <- aRep
-		csmfTemp$cvReplicate  <- aRep
-		csmf2Temp$cvReplicate <- aRep
+		# Likewise, now employ linear normalization.  That is, make predicitons
+		# on the training data using the transition matrix (QnBayes) from the
+		# training matrix.  Then, after all is said and done, use those values
+		# in a linear regression and "correct" the prediction counts and fractions
+		# in a copy of the csmf data frame.
+		if (useLinNorm) {
+			# Resample the cases using Dirichelt sampling
+			trainDat    <- trainDat[match(unique(trainDat$sid), trainDat$sid), ]
+			ttList2     <- cvSample(x=trainDat, testFraction=0.3,  ...)
+			probObj2    <- getMCDTransitionMatrix(x=ttList2[['trainDat']], nGrams=nGrams,
+							priorMethod=priorMethod, constant=constant,
+							mcdCols=mcdCols, cofactors=cofactorCols,
+							finalCause="gs_text", columnNormalize=columnNormalize, ...)
+			# careful here, this 'trainResult' is actually the testResult on the trainResult...
+			trainResult <- apply(ttList2[['testDat']], 1, function(x) { 
+						bestCall.3(x=x, probObj=probObj2, mcdCols=mcdCols, cofactors=cofactorCols, 
+									nGrams=nGrams, allCauses=allCauses, ...) })
+			trainResult          <- data.frame(t(trainResult), stringsAsFactors=FALSE)
+			trainResult$gs_text  <- ttList2[['testDat']]$gs_text
+			probCols             <- which(colnames(trainResult) %in% allCauses)
+			trainResult$inferred <- apply(trainResult, 1, function(z) {  
+							names(z[probCols])[order(as.numeric(z[probCols]), decreasing=TRUE)][1] })
+			csmfTempTrain             <- csmfCount(trainResult, allCauses)
+			csmfTempTrain$cvReplicate <- aRep
+			csmfTrain                 <- rbind(csmfTrain, csmfTempTrain)
+		}
+		
+		pCCCTemp                  <- calculatePCCCk(x=testResult, K=1:4, allCauses=allCauses)
+		pCCCTemp$cvReplicate      <- aRep
+		csmfTemp$cvReplicate      <- aRep
+		csmf2Temp$cvReplicate     <- aRep
 		csmf        		  <- rbind(csmf, csmfTemp)
 		csmf2                 <- rbind(csmf2, csmf2Temp)
 		pCCC                  <- rbind(pCCC, pCCCTemp)
 		bayesDat              <- rbind(bayesDat, testResult)
 	}
 	
+	if (useLinNorm) {
+#		csmfLinNorm <- linearAdjustCSMF.old(csmf, csmfTrain)
+		csmfLinNorm <- linearAdjustCSMF(csmf, csmfTrain)
+	}
+	
 	# Then go back and recalculate CCC for the whole shebang on the basis of partial calls, 
 	# ie not making a specific call for each patient.
 	rownames(bayesDat) <- NULL
-	retList <- list(csmf=csmf, csmf2=csmf2, pCCC=pCCC, bayesDat=bayesDat, probList=probList)
+	retList <- list(csmf=csmf, csmf2=csmf2, csmfTrain=csmfTrain, csmfLinNorm=csmfLinNorm,
+					pCCC=pCCC, bayesDat=bayesDat, probList=probList)
 	attr(retList, 'description')   <- paste('Run time', Sys.time(), '  priorMethod=', priorMethod, 
 											'  constant=', constant, '  useQ2=', useQ2,
 											'  nGrams=', nGrams)  
@@ -588,9 +658,9 @@ dirichletSample <- function(x, minValue=1) {
 # data set is just a random sample (except that it will have at least
 # one case of each term).   The other, the test data set, will have
 # a Dirichlet sample from each type.
-cvSample <- function(x, testFraction) {
+cvSample <- function(x, testFraction, equalTrainSizes=FALSE, ...) {
 	cutoff      <- round(nrow(x) * testFraction)    # size of the testDat
-	allCauses   <- unique(x$gs_text)                # * gs_text currently hardcoded here!
+	allCauses   <- sort(unique(x$gs_text))          # * gs_text currently hardcoded here!
 	
 	rowSample   <- sample(nrow(x), replace=FALSE)   # a radomization of the row numbers
 	testDat     <- x[rowSample[1:cutoff], ]         # testDat gets the first 'testFraction' part...
@@ -598,7 +668,8 @@ cvSample <- function(x, testFraction) {
 	trainCauses <- unique(trainDat$gs_text)         # some causes might be missing from train, so
 
 	# Steal them from test and put them in train
-	lostCauses  <- allCauses[!allCauses %in% trainCauses]  
+	lostCauses  <- allCauses[!allCauses %in% trainCauses]
+#	print(lostCauses)
 	for (aCause in lostCauses) {
 		inx      <- which(aCause == testDat$gs_text)[1]
 		trainDat <- rbind(testDat[inx,], trainDat)
@@ -608,27 +679,45 @@ cvSample <- function(x, testFraction) {
 	# Dirichlet sample the testDat
 	dSample  <- dirichletSample(testDat$gs_text)
 	testDat  <- testDat[dSample,]
+	
+	# One interpretation is to have each CoD category in the training data set be
+	# represented exactly as many times as any other CoD in the training set.
+	if (equalTrainSizes) {
+#		print(allCauses)
+		standardCount <- as.numeric(sort(table(trainDat$gs_text), decreasing=TRUE))[1]
+#		cat('standardCount is', standardCount, '\n')
+		temp          <- NULL
+		for (aCause in allCauses) {
+			inx  <- which(trainDat$gs_text == aCause)
+			if (length(inx)==1) inx <- c(inx, inx)   # weird 'sample' problem if just one item of a given cause!
+			temp <- rbind(temp, trainDat[sample(inx, size=standardCount, replace=TRUE),])
+		}
+#		cat(nrow(trainDat), nrow(temp), '\n')
+		trainDat <- temp
+	}
 
 	cvList <- list(trainDat=trainDat, testDat=testDat)
 	return(cvList)
 }
 
-#x = data.frame(gs_text=c(rep(LETTERS[1:5], each=5), 'Z'), score=1:26, stringsAsFactors=FALSE)
-#a = cvSample(x, testFraction=0.25); a
+
 
 
 # -----------------------------------------
 # Cause Specific Mortality Fractions (CSMF)
-#  See "Robust metrics..." p. 6
+# See "Robust metrics..." p. 7  http://www.ncbi.nlm.nih.gov/pmc/articles/PMC3160921/
 # See correction at:   http://www.pophealthmetrics.com/content/12/1/7
 # inferred   vector of inferred causes
 # observed   vector of gold standard causes
 calculateCSMF <- function(inferred, observed, allCauses) {
 	if (missing(allCauses))  allCauses <- sort(unique(c(inferred,observed)))
 	csmf <- data.frame(cause=allCauses, obs=0, obsFrac=0,
-						pred=0, predFrac=0, stringsAsFactors=FALSE)
+						pred=0, predFrac=0, CSMFAccuracy=NA, stringsAsFactors=FALSE)
 	if (length(inferred) != length(observed)) stop('\n  inferred and observed need to be the same length!\n\n')
-	N   <- length(allCauses)
+	N           <- length(allCauses)
+	n           <- length(observed)
+	numerator   <- 0
+	minCSMFtrue <- 1
 	for (aCause in allCauses) {
 		inx                   <- csmf$cause == aCause
 		truePos               <- sum((inferred == observed) & (observed == aCause))
@@ -642,36 +731,18 @@ calculateCSMF <- function(inferred, observed, allCauses) {
 		ccc                   <- ifelse(is.finite(ccc), ccc, 1)
 #		cat(aCause, truePos, falseNeg, ccc, '\n')
 		csmf[inx, 'CCC']      <- ccc
-	}
-	
-	return(csmf)
-}
-
-
-# -----------------------------------------
-# First version deals with two text vectors:
-# inferred   vector of inferred causes
-# observed   vector of gold standard causes
-#
-# See "Robust metrics..." p. 7  http://www.ncbi.nlm.nih.gov/pmc/articles/PMC3160921/
-#
-calculateCSMFAccuracy <- function(inferred, observed, allCauses) {
-	if (missing(allCauses))  allCauses <- c(inferred, observed)
-	allCauses   <- unique(allCauses)
-	n           <- length(observed)
-	numerator   <- 0
-	if (length(inferred) != length(observed)) stop('\n  inferred and observed need to be the same length!\n\n')
-	minCSMFtrue <- 1
-	for (aCause in allCauses) {
+		
+		# calculate CSMFAccuracy
 		csmfTrue    <- sum(observed == aCause) / n
 		csmfPred    <- sum(inferred == aCause) / n
 		minCSMFtrue <- ifelse((minCSMFtrue > csmfTrue), csmfTrue, minCSMFtrue)
 		numerator   <- numerator + abs(csmfTrue - csmfPred) 
 	}
-	csmfMaxError <- 2*(1-minCSMFtrue)
-	csmfAcc      <- 1 - (numerator / csmfMaxError)
-	return(csmfAcc)
+	csmfMaxError      <- 2*(1-minCSMFtrue)
+	csmf$CSMFAccuracy <- 1 - (numerator / csmfMaxError)
+	return(csmf)
 }
+
 
 
 # -----------------------------------------
@@ -683,20 +754,14 @@ calculateCSMFAccuracy <- function(inferred, observed, allCauses) {
 #   x     bayesDat obj.  Ie a column for each cause and couple of columns
 #                        to indicated cvReplicate and gs_text, etc.
 csmfCount <- function(x, allCauses) {
-	csmf      = NULL
-	if (missing(allCauses))  allCauses <- c(x$gs_text, x$inferred)
-	N         = length(allCauses)
-	n         = nrow(x)
-	probCols  = which(colnames(x) %in% allCauses)
-
-#	fn <- function(z, probCols) { 
-#		z[probCols] = as.numeric(z[probCols])
-#		z[probCols] = z[probCols] / sum(z[probCols], na.rm=TRUE)
-#		return(z)
-#	}
-#	
-#	x[,probCols] <- apply(as.matrix(x[,probCols]), 1, 
-#							function(z) { z = z/sum(z, na.rm=TRUE); return(z) })
+	csmf          = NULL
+	if (missing(allCauses))  allCauses <- sort(unique(c(x$gs_text, x$inferred)))
+	N             = length(allCauses)
+	n             = nrow(x)
+	minCSMFtrue   = 1
+	numerator     = 0
+	multFrac      =  n / sum(x[, allCauses])
+	x[,allCauses] = x[,allCauses] * multFrac
 	
 	for (aCause in allCauses) {
 		obs      = sum(x$gs_text == aCause)
@@ -708,17 +773,46 @@ csmfCount <- function(x, allCauses) {
 		falseNeg = obs - pred 
 		CCC      = ( (truePos / (truePos+falseNeg)) - (1/N) )  / (1 - (1/N))
 		# 2/6/15 Abie:  in the case of 0 predicted and 0 observed, the CCC_j should be 1.0
-		CCC      = ifelse(is.finite(CCC), CCC, 1)  
-		score    = pred / obs    # not needed??
-		csmf     = rbind(csmf, data.frame(cause=aCause, obs=obs, obsFrac=obsFrac, 
+		CCC      = ifelse(is.finite(CCC), CCC, 1)
+		
+		# CSMFAccuracy calculations
+		minCSMFtrue = ifelse((minCSMFtrue > obsFrac), obsFrac, minCSMFtrue)
+		numerator   = numerator + abs(obsFrac - predFrac)
+		
+		csmf        = rbind(csmf, data.frame(cause=aCause, obs=obs, obsFrac=obsFrac, 
 									pred=pred, predFrac=predFrac,
-									CCC=CCC, score=score, stringsAsFactors=FALSE))							
+									CCC=CCC, CSMFAccuracy=NA, stringsAsFactors=FALSE))
 	}
-
+	csmfMaxError       = 2*(1-minCSMFtrue)
+	csmf$CSMFAccuracy  = 1 - (numerator / csmfMaxError)
 	return(csmf)
 }
 
 #csmfCount(subset(retList$bayesDat, cvReplicate==3))
+
+# -----------------------------------------
+# 2/6/15 Abie:  in the case of 0 predicted and 0 observed, the CCC_j should be 1.0
+cccCalc <- function(truePos, falseNeg, pred, N, n, numerator=0, minCSMFtrue=1) {
+	ans  <- NULL  # return list
+	ccc  <- ( (truePos / (truePos+falseNeg)) - (1/N) )  / (1 - (1/N))
+	ccc  <- ifelse(is.finite(ccc), ccc, 1)
+
+	# calculate CSMFAccuracy
+	obsFrac     <- truePos / n
+	predFrac    <- pred / n
+	minCSMFtrue <- ifelse((minCSMFtrue > obsFrac), obsFrac, minCSMFtrue)
+	numerator   <- numerator + abs(obsFrac - predFrac) 
+
+	# Then this out of the 'cause' loop
+	csmfMaxError  <- 2*(1-minCSMFtrue)
+	CSMFAccuracy  <- 1 - (numerator / csmfMaxError)
+	ans <- list(ccc=ccc, obsFrac=obsFrac, predFrac=predFrac, minCSMFtrue=minCSMFtrue,
+				numerator=numerator, CSMFAccuracy=CSMFAccuracy)
+	return(ans)
+}
+
+# source('GC Methods.R')
+# a = cccCalc(truePos=17, falseNeg=1, pred=25, N=27, n=323, numerator=0, minCSMFtrue=1); str(a)
 
 
 # -----------------------------------------
@@ -733,8 +827,6 @@ csmfCount <- function(x, allCauses) {
 	N         = length(allCauses)
 	n         = nrow(x)
 	probCols  = which(colnames(x) %in% allCauses)
-	x$matchPosition = apply(x, 1, function(z) { match(z['gs_text'], 
-				names(z[probCols])[order(as.numeric(z[probCols]), decreasing=TRUE)]) })
 
 	for (k in K) {
 		C    = sum(x$matchPosition <= k) / n
@@ -758,24 +850,46 @@ csmfCount <- function(x, allCauses) {
 #
 linearAdjustCSMF <- function(csmfNew, csmfOld) {
 	for (aCause in unique(csmfOld$cause)) {
-#		print(aCause)
 		inx1 <- csmfOld$cause == aCause
-		fit  <- lm(predFrac ~ obsFrac, data=csmfOld[inx1,])
+		fit  <- lm(pred ~ obs, data=csmfOld[inx1,])
+		cat(' -------\n', aCause, coefficients(fit), '\n')
 		if (is.na(coefficients(fit)[2])) next
-		if (coefficients(fit)[2] == 0) next
+#		if (coefficients(fit)[2] == 0) next
+		if (coefficients(fit)[2] < 0.5) next  # Don't attempt extreme adjustments
 		inx2 <- csmfNew$cause == aCause
 		if (sum(inx2) == 0) next
-#		print(str(fit))
-#		csmfNew[inx2, 'predFrac'] <- predict(fit, newdata=csmfNew[inx2,])
-		csmfNew[inx2, 'predFrac'] <- csmfNew[inx2, 'predFrac'] - coefficients(fit)[1]
-		csmfNew[inx2, 'predFrac'] <- csmfNew[inx2, 'predFrac'] / coefficients(fit)[2]
+		newPred <- csmfNew[inx2, 'pred']
+		newPred <- (newPred - coefficients(fit)[1]) / coefficients(fit)[2]
+#		newPred <- newPred  * coefficients(fit)[2]
+		newPred <- ifelse(newPred < 0, csmfNew[inx2, 'pred'], newPred)
+		csmfNew[inx2, 'pred'] <- newPred
 	}
-	csmfNew <- ddply(csmfNew, .(cvReplicate), mutate, predFrac = predFrac / sum(predFrac))
+	
+	calcPreds <- function(x) {
+		x$pred     = round(x$pred * sum(x$obs) / sum(x$pred))
+		missingNum = sum(x$obs) - sum(x$pred)
+#		insertRows = sample(nrow(x), size=abs(missingNum), replace=TRUE, prob=x$pred)
+		insertRows = sample(nrow(x), size=abs(missingNum), replace=TRUE)
+		if (missingNum > 0) x[insertRows, 'pred'] = x[insertRows, 'pred'] + 1
+		if (missingNum < 0) x[insertRows, 'pred'] = x[insertRows, 'pred'] - 1
+		x$predFrac = x$pred / sum(x$pred)
+		
+		# Then ship that back in to calculate CCC and csmfAccuracy.
+		#  NOT WORKING YET  4/16/15
+#		temp = calculateCSMF(inferred=rep(x$cause, x$pred), observed=rep(x$cause, x$obs), allCauses=x$cause)
+#		str(temp)
+#		x$CSMFAccuracy = temp$CSMFAccuracy
+#		x$CCC          = temp$CCC
+		return(x)
+	}
+#	ddply(x, .(cvReplicate), calcPreds)
+
+	csmfNew <- ddply(csmfNew, .(cvReplicate), calcPreds)
 	return(csmfNew)
 }
 
-#junk <- linearAdjustCSMF(retList$csmf, retList$csmf)
-
+#junk <- linearAdjustCSMF(retList$csmf, retList$csmfTrain)
+#calculateCSMF(inferred=rep(allCauses, junk[1:27,'obs']), observed=rep(allCauses, junk[1:27,'pred']), allCauses=allCauses) 
 
 
 # =====================  D E B R I S  ===================== #
@@ -791,5 +905,23 @@ safeMatLookup <- function(Q, a, b, cell.default) {
 	return(Q[a,b])
 }
 
+# -----------------------------------------
+linearAdjustCSMF.old <- function(csmfNew, csmfOld) {
+	for (aCause in unique(csmfOld$cause)) {
+#		print(aCause)
+		inx1 <- csmfOld$cause == aCause
+		fit  <- lm(predFrac ~ obsFrac, data=csmfOld[inx1,])
+		if (is.na(coefficients(fit)[2])) next
+		if (coefficients(fit)[2] == 0) next
+		inx2 <- csmfNew$cause == aCause
+		if (sum(inx2) == 0) next
+#		print(str(fit))
+#		csmfNew[inx2, 'predFrac'] <- predict(fit, newdata=csmfNew[inx2,])
+		csmfNew[inx2, 'predFrac'] <- csmfNew[inx2, 'predFrac'] - coefficients(fit)[1]
+		csmfNew[inx2, 'predFrac'] <- csmfNew[inx2, 'predFrac'] / coefficients(fit)[2]
+	}
+	csmfNew <- ddply(csmfNew, .(cvReplicate), mutate, predFrac = predFrac / sum(predFrac))
+	return(csmfNew)
+}
 
 
